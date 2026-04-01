@@ -1,0 +1,43 @@
+spring:
+  application:
+    name: foodflow-backend
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/foodflow
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    open-in-view: false
+
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+server:
+  port: 8080
+  error:
+    include-message: always
+    include-binding-errors: always
+
+# JWT Configuration
+jwt:
+  secret: 5F7A3E9C2B8D4A1E6F0C3B7A9D2E5F8A4B1C7D0E3F6A9B2C5D8E1F4A7B0C3D6E
+  expiration: 86400000 # 24 hours in milliseconds
+
+# Logging
+logging:
+  level:
+    com.foodflow: DEBUG
+    org.springframework.security: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
