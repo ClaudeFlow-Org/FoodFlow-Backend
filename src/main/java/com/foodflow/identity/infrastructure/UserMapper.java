@@ -19,7 +19,7 @@ public class UserMapper {
     }
 
     public UserJpaEntity toEntity(User domain) {
-        UserJpaEntityBuilder builder = UserJpaEntity.builder()
+        var builder = UserJpaEntity.builder()
                 .name(domain.getName())
                 .email(domain.getEmail())
                 .password(domain.getPassword())

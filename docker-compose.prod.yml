@@ -1,0 +1,44 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: foodflow-app
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/foodflow
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - foodflow-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: foodflow-postgres
+    environment:
+      POSTGRES_DB: foodflow
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d foodflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - foodflow-network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  foodflow-network:
+    driver: bridge

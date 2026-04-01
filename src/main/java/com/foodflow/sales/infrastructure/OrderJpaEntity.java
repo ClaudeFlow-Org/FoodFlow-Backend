@@ -3,6 +3,7 @@ package com.foodflow.sales.infrastructure;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
+import lombok.Builder.Default;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -36,5 +37,6 @@ public class OrderJpaEntity {
     private BigDecimal totalAmount;
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Default
     private List<OrderLineItemJpaEntity> lineItems = new ArrayList<>();
 }

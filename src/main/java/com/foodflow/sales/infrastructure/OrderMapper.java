@@ -26,7 +26,7 @@ public class OrderMapper {
     }
 
     public OrderJpaEntity toEntity(Order domain) {
-        OrderJpaEntityBuilder builder = OrderJpaEntity.builder()
+        var builder = OrderJpaEntity.builder()
                 .userId(domain.getUserId())
                 .tableIdentifier(domain.getTableIdentifier())
                 .orderDate(domain.getOrderDate())

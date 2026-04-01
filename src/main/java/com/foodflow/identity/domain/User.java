@@ -1,5 +1,6 @@
 package com.foodflow.identity.domain;
 
+import com.foodflow.common.domain.ValidationException;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;

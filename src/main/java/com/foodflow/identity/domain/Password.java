@@ -1,5 +1,7 @@
 package com.foodflow.identity.domain;
 
+import com.foodflow.common.domain.ValidationException;
+
 public record Password(String value) {
 
     private static final int MIN_LENGTH = 6;

@@ -20,7 +20,7 @@ public class DishMapper {
     }
 
     public DishJpaEntity toEntity(Dish domain) {
-        DishJpaEntityBuilder builder = DishJpaEntity.builder()
+        var builder = DishJpaEntity.builder()
                 .name(domain.getName())
                 .description(domain.getDescription())
                 .price(domain.getPrice())

@@ -1,5 +1,7 @@
 package com.foodflow.identity.domain;
 
+import com.foodflow.common.domain.ValidationException;
+
 import java.util.regex.Pattern;
 
 public record Email(String value) {

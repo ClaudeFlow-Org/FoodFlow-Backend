@@ -20,7 +20,7 @@ public class ProductMapper {
     }
 
     public ProductJpaEntity toEntity(Product domain) {
-        ProductJpaEntityBuilder builder = ProductJpaEntity.builder()
+        var builder = ProductJpaEntity.builder()
                 .name(domain.getName())
                 .stockLevel(domain.getStockLevel())
                 .unitCost(domain.getUnitCost())
