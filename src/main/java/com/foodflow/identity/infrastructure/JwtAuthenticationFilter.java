@@ -27,8 +27,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
 
         String authHeader = request.getHeader("Authorization");
+        String requestUri = request.getRequestURI();
+
+        logger.debug("Processing request: " + requestUri + ", Auth header: " + (authHeader != null ? "present" : "missing"));
 
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            logger.debug("No valid Authorization header found for: " + requestUri);
             filterChain.doFilter(request, response);
             return;
         }
@@ -40,14 +44,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 String email = jwtTokenProvider.getEmailFromToken(token);
                 Long userId = jwtTokenProvider.getUserIdFromToken(token);
 
+                logger.debug("JWT validated successfully for user: " + email + ", userId: " + userId);
+
                 UserAuthentication userAuth = new UserAuthentication(userId, email, List.of());
                 UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(userAuth, null, userAuth.getAuthorities());
                 authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(authentication);
+            } else {
+                logger.warn("JWT validation failed for: " + requestUri);
             }
         } catch (Exception e) {
-            logger.error("JWT authentication failed", e);
+            logger.error("JWT authentication failed for: " + requestUri, e);
         }
 
         filterChain.doFilter(request, response);

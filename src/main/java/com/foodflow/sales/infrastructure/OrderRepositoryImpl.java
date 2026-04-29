@@ -24,7 +24,7 @@ public class OrderRepositoryImpl implements OrderRepository {
 
     @Override
     public Optional<Order> findById(Order.OrderId id) {
-        return jpaRepository.findById(id.value())
+        return jpaRepository.findByIdWithLineItems(id.value())
                 .map(orderMapper::toDomain);
     }
 

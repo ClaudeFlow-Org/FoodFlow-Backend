@@ -18,6 +18,23 @@ services:
     networks:
       - foodflow-network
 
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: foodflow-backend
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/foodflow
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - foodflow-network
+
 volumes:
   postgres_data:
     driver: local

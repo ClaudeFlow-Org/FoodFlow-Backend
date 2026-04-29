@@ -39,6 +39,9 @@ public class OrderController {
     @Operation(summary = "Get all orders", description = "Retrieve all orders for the authenticated user, ordered chronologically")
     public ApiResponse<List<OrderResponse>> getAllOrders(
             @AuthenticationPrincipal UserAuthentication userAuth) {
+        if (userAuth == null) {
+            throw new com.foodflow.common.domain.UnauthorizedException("Authentication required");
+        }
         List<OrderResponse> response = salesApplicationService.getAllOrders(userAuth.getUserId());
         return ApiResponse.success(response);
     }
