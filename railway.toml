@@ -1,0 +1,14 @@
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "java -jar target/foodflow-backend-1.0.0.jar"
+healthcheckPath = "/actuator/health"
+healthcheckTimeout = 300
+
+[[services]]
+name = "foodflow-backend"
+service_type = "web"
+
+[environments.production]
+# These will be automatically set by Railway when you add a database
