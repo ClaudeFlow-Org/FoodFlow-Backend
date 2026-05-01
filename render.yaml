@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: foodflow-backend
+    env: java
+    buildCommand: mvn clean package -DskipTests
+    startCommand: java -jar target/foodflow-backend-1.0.0.jar
+    envVars:
+      - key: DB_URL
+        fromDatabase:
+          name: foodflow-db
+          property: jdbcUrl
+      - key: DB_USERNAME
+        fromDatabase:
+          name: foodflow-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: foodflow-db
+          property: password
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SPRING_PROFILES_ACTIVE
+        value: production
+    healthCheckPath: /actuator/health
+
+databases:
+  - name: foodflow-db
+    databaseName: foodflow
+    user: foodflow_user
