@@ -19,7 +19,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/dishes")
 @RequiredArgsConstructor
-@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:4200"})
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:4200", "https://foodflowfrontend.vercel.app"})
 @Tag(name = "Menu / Dishes", description = "APIs for managing restaurant menu dishes")
 @SecurityRequirement(name = "Bearer Authentication")
 public class DishController {

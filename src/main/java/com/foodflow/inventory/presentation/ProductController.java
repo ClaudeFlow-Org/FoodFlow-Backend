@@ -23,7 +23,7 @@ import java.util.Arrays;
 @RestController
 @RequestMapping("/api/products")
 @RequiredArgsConstructor
-@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:4200"})
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:4200", "https://foodflowfrontend.vercel.app"})
 @Tag(name = "Inventory / Products", description = "APIs for managing inventory products")
 @SecurityRequirement(name = "Bearer Authentication")
 public class ProductController {
