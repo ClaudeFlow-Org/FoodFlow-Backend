@@ -9,7 +9,7 @@ import java.util.Optional;
 @Repository
 public interface SubscriptionJpaRepository extends JpaRepository<SubscriptionJpaEntity, String> {
 
-    Optional<SubscriptionJpaEntity> findByUserId(Long userId);
+    List<SubscriptionJpaEntity> findByUserIdOrderByStartDateDesc(Long userId);
 
     List<SubscriptionJpaEntity> findByStatus(SubscriptionStatusEnum status);
 }

@@ -29,7 +29,9 @@ public class SubscriptionRepositoryImpl implements SubscriptionRepository {
 
     @Override
     public Optional<Subscription> findByUserId(Long userId) {
-        return jpaRepository.findByUserId(userId)
+        return jpaRepository.findByUserIdOrderByStartDateDesc(userId)
+                .stream()
+                .findFirst()
                 .map(subscriptionMapper::toDomain);
     }
 
