@@ -24,6 +24,16 @@ public class BillingApplicationService {
     }
 
     public SubscriptionResponse subscribe(Long userId, SubscribeRequest request) {
+        if (userId == null) {
+            throw new ValidationException("userId", "User ID is required");
+        }
+        if (request == null) {
+            throw new ValidationException("request", "Subscribe request cannot be null");
+        }
+        if (request.getPlan() == null || request.getPlan().isBlank()) {
+            throw new ValidationException("plan", "Plan is required");
+        }
+
         SubscriptionPlan newPlan = SubscriptionPlan.valueOf(request.getPlan().toUpperCase());
 
         // Check for existing subscription
@@ -77,6 +87,10 @@ public class BillingApplicationService {
     }
 
     public SubscriptionResponse getCurrentSubscription(Long userId) {
+        if (userId == null) {
+            throw new ValidationException("userId", "User ID is required");
+        }
+
         Subscription subscription = subscriptionRepository.findByUserId(userId)
                 .orElseThrow(() -> new NotFoundException("Subscription", "user id " + userId));
 
@@ -99,6 +113,19 @@ public class BillingApplicationService {
     }
 
     private SubscriptionResponse toResponse(Subscription subscription) {
+        if (subscription == null) {
+            throw new ValidationException("subscription", "Subscription cannot be null");
+        }
+        if (subscription.getId() == null) {
+            throw new ValidationException("subscription.id", "Subscription ID cannot be null");
+        }
+        if (subscription.getPlan() == null) {
+            throw new ValidationException("subscription.plan", "Subscription plan cannot be null");
+        }
+        if (subscription.getStatus() == null) {
+            throw new ValidationException("subscription.status", "Subscription status cannot be null");
+        }
+
         return SubscriptionResponse.builder()
                 .id(subscription.getId().value())
                 .plan(subscription.getPlan().getDisplayName())
