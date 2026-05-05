@@ -4,6 +4,7 @@ import com.foodflow.billing.domain.Subscription;
 import com.foodflow.billing.domain.SubscriptionPlan;
 import com.foodflow.billing.domain.SubscriptionRepository;
 import com.foodflow.common.domain.NotFoundException;
+import com.foodflow.common.domain.ValidationException;
 import lombok.RequiredArgsConstructor;
 
 import java.time.LocalDateTime;
