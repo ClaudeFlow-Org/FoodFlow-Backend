@@ -1,14 +1,9 @@
 package com.foodflow.finance.domain;
 
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.TemporalAdjusters;
 
-@Getter
-@AllArgsConstructor
 public enum ReportPeriod {
 
     DAILY(1),
@@ -16,6 +11,14 @@ public enum ReportPeriod {
     MONTHLY(30);
 
     private final int days;
+
+    ReportPeriod(int days) {
+        this.days = days;
+    }
+
+    public int getDays() {
+        return days;
+    }
 
     public LocalDateTime getPeriodStart(LocalDateTime referenceDate) {
         LocalDate date = referenceDate.toLocalDate();

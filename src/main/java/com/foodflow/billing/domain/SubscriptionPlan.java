@@ -1,14 +1,10 @@
 package com.foodflow.billing.domain;
 
 import com.foodflow.common.domain.ValidationException;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
 
 import java.util.Arrays;
 import java.util.List;
 
-@Getter
-@AllArgsConstructor
 public enum SubscriptionPlan {
 
     FREE("Free", 0.0, Arrays.asList(
@@ -38,6 +34,24 @@ public enum SubscriptionPlan {
     private final String displayName;
     private final Double monthlyPrice;
     private final List<String> benefits;
+
+    SubscriptionPlan(String displayName, Double monthlyPrice, List<String> benefits) {
+        this.displayName = displayName;
+        this.monthlyPrice = monthlyPrice;
+        this.benefits = benefits;
+    }
+
+    public String getDisplayName() {
+        return displayName;
+    }
+
+    public Double getMonthlyPrice() {
+        return monthlyPrice;
+    }
+
+    public List<String> getBenefits() {
+        return benefits;
+    }
 
     public static SubscriptionPlan fromDisplayName(String displayName) {
         for (SubscriptionPlan plan : values()) {

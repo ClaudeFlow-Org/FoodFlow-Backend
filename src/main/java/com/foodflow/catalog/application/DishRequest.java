@@ -3,17 +3,9 @@ package com.foodflow.catalog.application;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
 public class DishRequest {
 
     @NotBlank(message = "Name is required")
@@ -28,4 +20,79 @@ public class DishRequest {
 
     @Size(max = 500, message = "Ingredients must not exceed 500 characters")
     private String ingredients;
+
+    public DishRequest() {
+    }
+
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public BigDecimal getPrice() {
+        return price;
+    }
+
+    public void setPrice(BigDecimal price) {
+        this.price = price;
+    }
+
+    public String getIngredients() {
+        return ingredients;
+    }
+
+    public void setIngredients(String ingredients) {
+        this.ingredients = ingredients;
+    }
+
+    public static class Builder {
+        private String name;
+        private String description;
+        private BigDecimal price;
+        private String ingredients;
+
+        public Builder name(String name) {
+            this.name = name;
+            return this;
+        }
+
+        public Builder description(String description) {
+            this.description = description;
+            return this;
+        }
+
+        public Builder price(BigDecimal price) {
+            this.price = price;
+            return this;
+        }
+
+        public Builder ingredients(String ingredients) {
+            this.ingredients = ingredients;
+            return this;
+        }
+
+        public DishRequest build() {
+            DishRequest request = new DishRequest();
+            request.name = this.name;
+            request.description = this.description;
+            request.price = this.price;
+            request.ingredients = this.ingredients;
+            return request;
+        }
+    }
 }

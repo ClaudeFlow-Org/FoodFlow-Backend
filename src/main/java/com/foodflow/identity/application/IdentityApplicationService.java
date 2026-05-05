@@ -1,5 +1,8 @@
 package com.foodflow.identity.application;
 
+import com.foodflow.billing.domain.Subscription;
+import com.foodflow.billing.domain.SubscriptionPlan;
+import com.foodflow.billing.domain.SubscriptionRepository;
 import com.foodflow.common.domain.DuplicateResourceException;
 import com.foodflow.common.domain.NotFoundException;
 import com.foodflow.common.domain.UnauthorizedException;
@@ -11,6 +14,7 @@ import com.foodflow.identity.domain.UserRepository;
 import lombok.RequiredArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.Optional;
 
 @org.springframework.stereotype.Service
 @RequiredArgsConstructor
@@ -19,6 +23,7 @@ public class IdentityApplicationService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
+    private final SubscriptionRepository subscriptionRepository;
 
     public UserResponse register(RegisterRequest request) {
         if (userRepository.existsByEmail(request.getEmail())) {
@@ -99,11 +104,19 @@ public class IdentityApplicationService {
     }
 
     private UserResponse toResponse(User user) {
+        // Get user's subscription type, default to FREE if no subscription
+        String subscriptionType = SubscriptionPlan.FREE.name();
+        Optional<Subscription> subscriptionOpt = subscriptionRepository.findByUserId(user.getId().value());
+        if (subscriptionOpt.isPresent() && subscriptionOpt.get().isActive()) {
+            subscriptionType = subscriptionOpt.get().getPlan().name();
+        }
+
         return UserResponse.builder()
                 .id(user.getId().value())
                 .name(user.getName())
                 .email(user.getEmail())
                 .profileImageUrl(user.getProfileImageUrl())
+                .subscriptionType(subscriptionType)
                 .createdAt(user.getCreatedAt())
                 .build();
     }

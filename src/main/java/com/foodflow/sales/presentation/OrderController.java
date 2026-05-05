@@ -65,4 +65,36 @@ public class OrderController {
         salesApplicationService.deleteOrder(userAuth.getUserId(), id);
         return ApiResponse.success("Order deleted successfully", null);
     }
+
+    @PutMapping("/{id}/status")
+    @Operation(summary = "Update order status", description = "Update the status of an order to a specific state")
+    public ApiResponse<OrderResponse> updateOrderStatus(
+            @AuthenticationPrincipal UserAuthentication userAuth,
+            @Parameter(description = "Order ID", required = true)
+            @PathVariable Long id,
+            @Parameter(description = "New status", required = true)
+            @RequestParam com.foodflow.sales.domain.Order.OrderStatus status) {
+        OrderResponse response = salesApplicationService.updateOrderStatus(userAuth.getUserId(), id, status);
+        return ApiResponse.success("Order status updated successfully", response);
+    }
+
+    @PutMapping("/{id}/advance")
+    @Operation(summary = "Advance order status", description = "Advance the order to the next status (PENDING -> PREPARING -> READY -> DELIVERED)")
+    public ApiResponse<OrderResponse> advanceOrderStatus(
+            @AuthenticationPrincipal UserAuthentication userAuth,
+            @Parameter(description = "Order ID", required = true)
+            @PathVariable Long id) {
+        OrderResponse response = salesApplicationService.advanceOrderStatus(userAuth.getUserId(), id);
+        return ApiResponse.success("Order status advanced successfully", response);
+    }
+
+    @PutMapping("/{id}/cancel")
+    @Operation(summary = "Cancel order", description = "Cancel an order that is not yet delivered")
+    public ApiResponse<OrderResponse> cancelOrder(
+            @AuthenticationPrincipal UserAuthentication userAuth,
+            @Parameter(description = "Order ID", required = true)
+            @PathVariable Long id) {
+        OrderResponse response = salesApplicationService.cancelOrder(userAuth.getUserId(), id);
+        return ApiResponse.success("Order cancelled successfully", response);
+    }
 }

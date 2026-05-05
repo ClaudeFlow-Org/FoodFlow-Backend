@@ -7,6 +7,8 @@ import com.foodflow.common.domain.ValidationException;
 import com.foodflow.sales.domain.Order;
 import com.foodflow.sales.domain.OrderLineItem;
 import com.foodflow.sales.domain.OrderRepository;
+import com.foodflow.sales.domain.OrderSequence;
+import com.foodflow.sales.domain.OrderSequenceRepository;
 import lombok.RequiredArgsConstructor;
 
 import java.math.BigDecimal;
@@ -20,11 +22,26 @@ public class SalesApplicationService {
 
     private final OrderRepository orderRepository;
     private final DishRepository dishRepository;
+    private final OrderSequenceRepository orderSequenceRepository;
 
     public OrderResponse createOrder(Long userId, OrderRequest request) {
         if (request.getLineItems() == null || request.getLineItems().isEmpty()) {
             throw new ValidationException("lineItems", "At least one line item is required");
         }
+
+        // Get or create order sequence for this user
+        OrderSequence sequence = orderSequenceRepository.findByUserId(userId)
+                .orElseGet(() -> OrderSequence.builder()
+                        .userId(userId)
+                        .nextValue(1L)
+                        .build());
+
+        // Get next sequence number and update
+        Long sequenceNumber = sequence.getNextAndIncrement();
+        orderSequenceRepository.save(sequence);
+
+        // Generate unique order number: {userId}-{sequenceNumber}
+        String orderNumber = Order.generateOrderNumber(userId, sequenceNumber);
 
         List<OrderLineItem> lineItems = request.getLineItems().stream()
                 .map(itemRequest -> {
@@ -51,6 +68,8 @@ public class SalesApplicationService {
                 .orderDate(LocalDateTime.now())
                 .lineItems(lineItems)
                 .totalAmount(BigDecimal.ZERO)
+                .status(Order.OrderStatus.PENDING)
+                .orderNumber(orderNumber)
                 .build();
 
         order.calculateTotal();
@@ -102,10 +121,54 @@ public class SalesApplicationService {
 
         return OrderResponse.builder()
                 .id(order.getId().value())
+                .orderNumber(order.getOrderNumber())
                 .tableIdentifier(order.getTableIdentifier())
                 .orderDate(order.getOrderDate())
                 .lineItems(lineItemResponses)
                 .totalAmount(order.getTotalAmount())
+                .status(order.getStatus() != null ? order.getStatus() : Order.OrderStatus.PENDING)
                 .build();
+    }
+
+    public OrderResponse updateOrderStatus(Long userId, Long orderId, Order.OrderStatus newStatus) {
+        Order order = orderRepository.findById(Order.OrderId.of(orderId))
+                .orElseThrow(() -> new NotFoundException("Order", "id " + orderId));
+
+        if (!order.getUserId().equals(userId)) {
+            throw new ValidationException("You do not have access to this order");
+        }
+
+        order.setStatus(newStatus);
+        Order savedOrder = orderRepository.save(order);
+
+        return toResponse(savedOrder);
+    }
+
+    public OrderResponse advanceOrderStatus(Long userId, Long orderId) {
+        Order order = orderRepository.findById(Order.OrderId.of(orderId))
+                .orElseThrow(() -> new NotFoundException("Order", "id " + orderId));
+
+        if (!order.getUserId().equals(userId)) {
+            throw new ValidationException("You do not have access to this order");
+        }
+
+        order.advanceStatus();
+        Order savedOrder = orderRepository.save(order);
+
+        return toResponse(savedOrder);
+    }
+
+    public OrderResponse cancelOrder(Long userId, Long orderId) {
+        Order order = orderRepository.findById(Order.OrderId.of(orderId))
+                .orElseThrow(() -> new NotFoundException("Order", "id " + orderId));
+
+        if (!order.getUserId().equals(userId)) {
+            throw new ValidationException("You do not have access to this order");
+        }
+
+        order.cancel();
+        Order savedOrder = orderRepository.save(order);
+
+        return toResponse(savedOrder);
     }
 }

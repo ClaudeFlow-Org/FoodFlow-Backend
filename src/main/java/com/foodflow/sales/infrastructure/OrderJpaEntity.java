@@ -1,11 +1,7 @@
 package com.foodflow.sales.infrastructure;
 
+import com.foodflow.sales.domain.Order;
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Builder.Default;
-import lombok.Data;
-import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -14,10 +10,6 @@ import java.util.List;
 
 @Entity
 @Table(name = "orders")
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
 public class OrderJpaEntity {
 
     @Id
@@ -36,7 +28,148 @@ public class OrderJpaEntity {
     @Column(name = "total_amount", nullable = false, precision = 12, scale = 2)
     private BigDecimal totalAmount;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 20)
+    private Order.OrderStatus status = Order.OrderStatus.PENDING;
+
+    @Column(name = "order_number", nullable = false, length = 20, unique = true)
+    private String orderNumber;
+
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
-    @Default
     private List<OrderLineItemJpaEntity> lineItems = new ArrayList<>();
+
+    public OrderJpaEntity() {
+    }
+
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public Long getUserId() {
+        return userId;
+    }
+
+    public void setUserId(Long userId) {
+        this.userId = userId;
+    }
+
+    public String getTableIdentifier() {
+        return tableIdentifier;
+    }
+
+    public void setTableIdentifier(String tableIdentifier) {
+        this.tableIdentifier = tableIdentifier;
+    }
+
+    public LocalDateTime getOrderDate() {
+        return orderDate;
+    }
+
+    public void setOrderDate(LocalDateTime orderDate) {
+        this.orderDate = orderDate;
+    }
+
+    public BigDecimal getTotalAmount() {
+        return totalAmount;
+    }
+
+    public void setTotalAmount(BigDecimal totalAmount) {
+        this.totalAmount = totalAmount;
+    }
+
+    public Order.OrderStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(Order.OrderStatus status) {
+        this.status = status;
+    }
+
+    public String getOrderNumber() {
+        return orderNumber;
+    }
+
+    public void setOrderNumber(String orderNumber) {
+        this.orderNumber = orderNumber;
+    }
+
+    public List<OrderLineItemJpaEntity> getLineItems() {
+        return lineItems;
+    }
+
+    public void setLineItems(List<OrderLineItemJpaEntity> lineItems) {
+        this.lineItems = lineItems;
+    }
+
+    public static class Builder {
+        private Long id;
+        private Long userId;
+        private String tableIdentifier;
+        private LocalDateTime orderDate;
+        private BigDecimal totalAmount;
+        private Order.OrderStatus status = Order.OrderStatus.PENDING;
+        private String orderNumber;
+        private List<OrderLineItemJpaEntity> lineItems = new ArrayList<>();
+
+        public Builder id(Long id) {
+            this.id = id;
+            return this;
+        }
+
+        public Builder userId(Long userId) {
+            this.userId = userId;
+            return this;
+        }
+
+        public Builder tableIdentifier(String tableIdentifier) {
+            this.tableIdentifier = tableIdentifier;
+            return this;
+        }
+
+        public Builder orderDate(LocalDateTime orderDate) {
+            this.orderDate = orderDate;
+            return this;
+        }
+
+        public Builder totalAmount(BigDecimal totalAmount) {
+            this.totalAmount = totalAmount;
+            return this;
+        }
+
+        public Builder status(Order.OrderStatus status) {
+            this.status = status;
+            return this;
+        }
+
+        public Builder orderNumber(String orderNumber) {
+            this.orderNumber = orderNumber;
+            return this;
+        }
+
+        public Builder lineItems(List<OrderLineItemJpaEntity> lineItems) {
+            this.lineItems = lineItems;
+            return this;
+        }
+
+        public OrderJpaEntity build() {
+            OrderJpaEntity entity = new OrderJpaEntity();
+            entity.id = this.id;
+            entity.userId = this.userId;
+            entity.tableIdentifier = this.tableIdentifier;
+            entity.orderDate = this.orderDate;
+            entity.totalAmount = this.totalAmount;
+            entity.status = this.status;
+            entity.orderNumber = this.orderNumber;
+            entity.lineItems = this.lineItems;
+            return entity;
+        }
+    }
 }

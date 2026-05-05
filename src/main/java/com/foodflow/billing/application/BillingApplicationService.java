@@ -4,11 +4,11 @@ import com.foodflow.billing.domain.Subscription;
 import com.foodflow.billing.domain.SubscriptionPlan;
 import com.foodflow.billing.domain.SubscriptionRepository;
 import com.foodflow.common.domain.NotFoundException;
-import com.foodflow.common.domain.ValidationException;
 import lombok.RequiredArgsConstructor;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @org.springframework.stereotype.Service
@@ -24,30 +24,41 @@ public class BillingApplicationService {
     }
 
     public SubscriptionResponse subscribe(Long userId, SubscribeRequest request) {
-        SubscriptionPlan plan = SubscriptionPlan.valueOf(request.getPlan().toUpperCase());
+        SubscriptionPlan newPlan = SubscriptionPlan.valueOf(request.getPlan().toUpperCase());
 
-        subscriptionRepository.findByUserId(userId).ifPresent(existing -> {
-            if (existing.isActive()) {
-                throw new ValidationException("User already has an active subscription");
-            }
-        });
+        // Check for existing subscription
+        Optional<Subscription> existingSubscriptionOpt = subscriptionRepository.findByUserId(userId);
 
-        LocalDateTime endDate = calculateEndDate(plan);
+        Subscription subscription;
+        if (existingSubscriptionOpt.isPresent() && existingSubscriptionOpt.get().isActive()) {
+            // Upgrade or downgrade existing subscription
+            Subscription existing = existingSubscriptionOpt.get();
 
-        Subscription subscription = Subscription.builder()
-                .id(Subscription.SubscriptionId.generate())
-                .userId(userId)
-                .plan(plan)
-                .status(Subscription.SubscriptionStatus.ACTIVE)
-                .startDate(LocalDateTime.now())
-                .endDate(endDate)
-                .cancellationDate(null)
-                .stripeSubscriptionId(null)
-                .build();
+            // Update the existing subscription with the new plan
+            existing.changePlan(newPlan);
+            existing.setStartDate(LocalDateTime.now());
+            existing.setEndDate(calculateEndDate(newPlan));
 
-        Subscription savedSubscription = subscriptionRepository.save(subscription);
+            subscription = subscriptionRepository.save(existing);
+        } else {
+            // Create new subscription
+            LocalDateTime endDate = calculateEndDate(newPlan);
 
-        return toResponse(savedSubscription);
+            subscription = Subscription.builder()
+                    .id(Subscription.SubscriptionId.generate())
+                    .userId(userId)
+                    .plan(newPlan)
+                    .status(Subscription.SubscriptionStatus.ACTIVE)
+                    .startDate(LocalDateTime.now())
+                    .endDate(endDate)
+                    .cancellationDate(null)
+                    .stripeSubscriptionId(null)
+                    .build();
+
+            subscription = subscriptionRepository.save(subscription);
+        }
+
+        return toResponse(subscription);
     }
 
     public SubscriptionResponse cancelSubscription(Long userId) {
