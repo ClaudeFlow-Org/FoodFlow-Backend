@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @org.springframework.stereotype.Service
@@ -24,30 +25,51 @@ public class BillingApplicationService {
     }
 
     public SubscriptionResponse subscribe(Long userId, SubscribeRequest request) {
-        SubscriptionPlan plan = SubscriptionPlan.valueOf(request.getPlan().toUpperCase());
+        if (userId == null) {
+            throw new ValidationException("userId", "User ID is required");
+        }
+        if (request == null) {
+            throw new ValidationException("request", "Subscribe request cannot be null");
+        }
+        if (request.getPlan() == null || request.getPlan().isBlank()) {
+            throw new ValidationException("plan", "Plan is required");
+        }
 
-        subscriptionRepository.findByUserId(userId).ifPresent(existing -> {
-            if (existing.isActive()) {
-                throw new ValidationException("User already has an active subscription");
-            }
-        });
+        SubscriptionPlan newPlan = SubscriptionPlan.valueOf(request.getPlan().toUpperCase());
 
-        LocalDateTime endDate = calculateEndDate(plan);
+        // Check for existing subscription
+        Optional<Subscription> existingSubscriptionOpt = subscriptionRepository.findByUserId(userId);
 
-        Subscription subscription = Subscription.builder()
-                .id(Subscription.SubscriptionId.generate())
-                .userId(userId)
-                .plan(plan)
-                .status(Subscription.SubscriptionStatus.ACTIVE)
-                .startDate(LocalDateTime.now())
-                .endDate(endDate)
-                .cancellationDate(null)
-                .stripeSubscriptionId(null)
-                .build();
+        Subscription subscription;
+        if (existingSubscriptionOpt.isPresent() && existingSubscriptionOpt.get().isActive()) {
+            // Upgrade or downgrade existing subscription
+            Subscription existing = existingSubscriptionOpt.get();
 
-        Subscription savedSubscription = subscriptionRepository.save(subscription);
+            // Update the existing subscription with the new plan
+            existing.changePlan(newPlan);
+            existing.setStartDate(LocalDateTime.now());
+            existing.setEndDate(calculateEndDate(newPlan));
 
-        return toResponse(savedSubscription);
+            subscription = subscriptionRepository.save(existing);
+        } else {
+            // Create new subscription
+            LocalDateTime endDate = calculateEndDate(newPlan);
+
+            subscription = Subscription.builder()
+                    .id(Subscription.SubscriptionId.generate())
+                    .userId(userId)
+                    .plan(newPlan)
+                    .status(Subscription.SubscriptionStatus.ACTIVE)
+                    .startDate(LocalDateTime.now())
+                    .endDate(endDate)
+                    .cancellationDate(null)
+                    .stripeSubscriptionId(null)
+                    .build();
+
+            subscription = subscriptionRepository.save(subscription);
+        }
+
+        return toResponse(subscription);
     }
 
     public SubscriptionResponse cancelSubscription(Long userId) {
@@ -66,6 +88,10 @@ public class BillingApplicationService {
     }
 
     public SubscriptionResponse getCurrentSubscription(Long userId) {
+        if (userId == null) {
+            throw new ValidationException("userId", "User ID is required");
+        }
+
         Subscription subscription = subscriptionRepository.findByUserId(userId)
                 .orElseThrow(() -> new NotFoundException("Subscription", "user id " + userId));
 
@@ -88,6 +114,19 @@ public class BillingApplicationService {
     }
 
     private SubscriptionResponse toResponse(Subscription subscription) {
+        if (subscription == null) {
+            throw new ValidationException("subscription", "Subscription cannot be null");
+        }
+        if (subscription.getId() == null) {
+            throw new ValidationException("subscription.id", "Subscription ID cannot be null");
+        }
+        if (subscription.getPlan() == null) {
+            throw new ValidationException("subscription.plan", "Subscription plan cannot be null");
+        }
+        if (subscription.getStatus() == null) {
+            throw new ValidationException("subscription.status", "Subscription status cannot be null");
+        }
+
         return SubscriptionResponse.builder()
                 .id(subscription.getId().value())
                 .plan(subscription.getPlan().getDisplayName())

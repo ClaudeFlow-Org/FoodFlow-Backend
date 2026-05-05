@@ -1,6 +1,7 @@
 package com.foodflow.inventory.application;
 
 import com.foodflow.inventory.domain.Product;
+import com.foodflow.inventory.domain.ProductCategory;
 import com.foodflow.inventory.domain.ProductRepository;
 import com.foodflow.common.domain.DuplicateResourceException;
 import com.foodflow.common.domain.NotFoundException;
@@ -27,6 +28,10 @@ public class InventoryApplicationService {
         Product product = Product.builder()
                 .id(Product.ProductId.empty())
                 .name(request.getName())
+                .description(request.getDescription())
+                .category(request.getCategory() != null ? ProductCategory.fromString(request.getCategory()) : ProductCategory.OTHER)
+                .supplier(request.getSupplier())
+                .lowStockThreshold(request.getLowStockThreshold() != null ? request.getLowStockThreshold() : BigDecimal.TEN)
                 .stockLevel(request.getStockLevel())
                 .unitCost(request.getUnitCost())
                 .unitOfMeasure(request.getUnitOfMeasure())
@@ -73,8 +78,16 @@ public class InventoryApplicationService {
 
         validateProductRequest(request);
 
-        product.updateDetails(request.getName(), request.getStockLevel(),
-                request.getUnitCost(), request.getUnitOfMeasure());
+        product.updateDetails(
+                request.getName(),
+                request.getDescription(),
+                request.getCategory() != null ? ProductCategory.fromString(request.getCategory()) : null,
+                request.getSupplier(),
+                request.getStockLevel(),
+                request.getUnitCost(),
+                request.getLowStockThreshold(),
+                request.getUnitOfMeasure()
+        );
 
         Product updatedProduct = productRepository.save(product);
 
@@ -111,6 +124,10 @@ public class InventoryApplicationService {
         return ProductResponse.builder()
                 .id(product.getId().value())
                 .name(product.getName())
+                .description(product.getDescription())
+                .category(product.getCategory() != null ? product.getCategory().name() : null)
+                .supplier(product.getSupplier())
+                .lowStockThreshold(product.getLowStockThreshold())
                 .stockLevel(product.getStockLevel())
                 .unitCost(product.getUnitCost())
                 .unitOfMeasure(product.getUnitOfMeasure())

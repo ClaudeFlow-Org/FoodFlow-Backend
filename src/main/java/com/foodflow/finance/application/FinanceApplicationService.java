@@ -63,6 +63,10 @@ public class FinanceApplicationService {
         List<TopDish> topDishes = getTopDishes(userId, 10);
         List<ExpenseCategory> expenseBreakdown = calculateExpenseBreakdown(userId, start, end);
 
+        // Calculate order count for the period
+        List<Order> ordersInPeriod = orderRepository.findByUserIdAndDateBetween(userId, start, end);
+        Long orderCount = (long) ordersInPeriod.size();
+
         return FinancialReportResponse.builder()
                 .period(period.name())
                 .startDate(start)
@@ -70,6 +74,7 @@ public class FinanceApplicationService {
                 .metrics(toMetricsResponse(currentMetrics))
                 .topDishes(topDishes.stream().map(this::toTopDishResponse).collect(Collectors.toList()))
                 .expenseBreakdown(expenseBreakdown.stream().map(this::toExpenseCategoryResponse).collect(Collectors.toList()))
+                .orderCount(orderCount)
                 .build();
     }
 
@@ -122,11 +127,16 @@ public class FinanceApplicationService {
 
     private List<ExpenseCategory> calculateExpenseBreakdown(Long userId, LocalDateTime start, LocalDateTime end) {
         List<Product> products = productRepository.findByUserId(userId);
-
         Map<String, BigDecimal> categoryExpenses = new LinkedHashMap<>();
-        categoryExpenses.put("Inventory", products.stream()
-                .map(p -> p.getUnitCost().multiply(p.getStockLevel()))
-                .reduce(BigDecimal.ZERO, BigDecimal::add));
+
+        // Agrupar por categoría
+        for (Product product : products) {
+            String category = product.getCategory() != null
+                ? product.getCategory().getDisplayName()
+                : "Sin categoría";
+            BigDecimal expense = product.getUnitCost().multiply(product.getStockLevel());
+            categoryExpenses.merge(category, expense, BigDecimal::add);
+        }
 
         BigDecimal totalExpenses = categoryExpenses.values().stream()
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -140,6 +150,7 @@ public class FinanceApplicationService {
                     category.calculatePercentage(totalExpenses);
                     return category;
                 })
+                .sorted((a, b) -> b.getAmount().compareTo(a.getAmount()))
                 .collect(Collectors.toList());
     }
 

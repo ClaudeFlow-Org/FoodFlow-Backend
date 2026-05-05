@@ -22,6 +22,8 @@ public class OrderMapper {
                 .orderDate(entity.getOrderDate())
                 .lineItems(lineItems)
                 .totalAmount(entity.getTotalAmount())
+                .status(entity.getStatus() != null ? entity.getStatus() : Order.OrderStatus.PENDING)
+                .orderNumber(entity.getOrderNumber())
                 .build();
     }
 
@@ -30,7 +32,9 @@ public class OrderMapper {
                 .userId(domain.getUserId())
                 .tableIdentifier(domain.getTableIdentifier())
                 .orderDate(domain.getOrderDate())
-                .totalAmount(domain.getTotalAmount());
+                .totalAmount(domain.getTotalAmount())
+                .status(domain.getStatus() != null ? domain.getStatus() : Order.OrderStatus.PENDING)
+                .orderNumber(domain.getOrderNumber());
 
         if (domain.getId().value() != null) {
             builder.id(domain.getId().value());

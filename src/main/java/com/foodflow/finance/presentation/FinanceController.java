@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/finance")
 @RequiredArgsConstructor
-@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:4200"})
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:4200", "https://foodflowfrontend.vercel.app"})
 @Tag(name = "Finance & Reports", description = "APIs for financial dashboard and reporting")
 @SecurityRequirement(name = "Bearer Authentication")
 public class FinanceController {

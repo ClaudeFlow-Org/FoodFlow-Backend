@@ -2,15 +2,7 @@ package com.foodflow.identity.application;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
 public class LoginRequest {
 
     @NotBlank(message = "Email is required")
@@ -19,4 +11,54 @@ public class LoginRequest {
 
     @NotBlank(message = "Password is required")
     private String password;
+
+    public LoginRequest() {
+    }
+
+    public LoginRequest(String email, String password) {
+        this.email = email;
+        this.password = password;
+    }
+
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+
+    public static class Builder {
+        private String email;
+        private String password;
+
+        public Builder email(String email) {
+            this.email = email;
+            return this;
+        }
+
+        public Builder password(String password) {
+            this.password = password;
+            return this;
+        }
+
+        public LoginRequest build() {
+            LoginRequest request = new LoginRequest();
+            request.email = this.email;
+            request.password = this.password;
+            return request;
+        }
+    }
 }

@@ -5,17 +5,19 @@ import com.foodflow.catalog.domain.DishRepository;
 import com.foodflow.common.domain.DuplicateResourceException;
 import com.foodflow.common.domain.NotFoundException;
 import com.foodflow.common.domain.ValidationException;
-import lombok.RequiredArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
 @org.springframework.stereotype.Service
-@RequiredArgsConstructor
 public class CatalogApplicationService {
 
     private final DishRepository dishRepository;
+
+    public CatalogApplicationService(DishRepository dishRepository) {
+        this.dishRepository = dishRepository;
+    }
 
     public DishResponse addDish(Long userId, DishRequest request) {
         if (dishRepository.existsByUserIdAndName(userId, request.getName())) {

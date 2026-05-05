@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
-@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:4200"})
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:4200", "https://foodflowfrontend.vercel.app"})
 @Tag(name = "User Profile", description = "APIs for managing user profile information")
 @SecurityRequirement(name = "Bearer Authentication")
 public class UserController {

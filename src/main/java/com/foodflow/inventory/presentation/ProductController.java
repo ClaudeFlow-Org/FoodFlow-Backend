@@ -5,6 +5,7 @@ import com.foodflow.identity.infrastructure.UserAuthentication;
 import com.foodflow.inventory.application.InventoryApplicationService;
 import com.foodflow.inventory.application.ProductRequest;
 import com.foodflow.inventory.application.ProductResponse;
+import com.foodflow.inventory.domain.ProductCategory;
 import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -15,11 +16,14 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.Arrays;
 
 @RestController
 @RequestMapping("/api/products")
 @RequiredArgsConstructor
-@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:4200"})
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:4200", "https://foodflowfrontend.vercel.app"})
 @Tag(name = "Inventory / Products", description = "APIs for managing inventory products")
 @SecurityRequirement(name = "Bearer Authentication")
 public class ProductController {
@@ -72,5 +76,19 @@ public class ProductController {
             @PathVariable Long id) {
         inventoryApplicationService.deleteProduct(userAuth.getUserId(), id);
         return ApiResponse.success("Product deleted successfully", null);
+    }
+
+    @GetMapping("/categories")
+    @Operation(summary = "Get product categories", description = "Retrieve all available product categories")
+    public ApiResponse<List<Map<String, String>>> getCategories() {
+        List<Map<String, String>> categories = Arrays.stream(ProductCategory.values())
+                .map(cat -> Map.of(
+                        "value", cat.name(),
+                        "label", cat.getDisplayName(),
+                        "labelEs", cat.getDisplayNameEs(),
+                        "labelEn", cat.getDisplayNameEn()
+                ))
+                .collect(Collectors.toList());
+        return ApiResponse.success(categories);
     }
 }
