@@ -29,10 +29,10 @@ public class OrderJpaEntity {
     private BigDecimal totalAmount;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 20)
+    @Column(name = "status", length = 20)
     private Order.OrderStatus status = Order.OrderStatus.PENDING;
 
-    @Column(name = "order_number", nullable = false, length = 20, unique = true)
+    @Column(name = "order_number", length = 20)
     private String orderNumber;
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
