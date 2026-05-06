@@ -16,7 +16,9 @@ import org.slf4j.LoggerFactory;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @org.springframework.stereotype.Service
@@ -25,6 +27,8 @@ public class InventoryApplicationService {
 
     private static final Logger log = LoggerFactory.getLogger(InventoryApplicationService.class);
     private static final String UNCATEGORIZED = "Sin categoria";
+    private static final String PRODUCT_CATEGORY_ASSIGNMENT_PREFIX = "__pc:";
+    private static final int MAX_CATEGORY_NAME_LENGTH = 80;
 
     private final ProductRepository productRepository;
     private final InventoryPurchaseRepository inventoryPurchaseRepository;
@@ -37,14 +41,14 @@ public class InventoryApplicationService {
 
         validateProductRequest(request);
 
-        String category = normalizeCategory(request.getCategory());
-        runOptionalSync("ensuring product category", () -> ensureCategoryExists(userId, category));
+        String displayCategory = normalizeCategory(request.getCategory());
+        runOptionalSync("ensuring product category", () -> ensureCategoryExists(userId, displayCategory));
 
         Product product = Product.builder()
                 .id(Product.ProductId.empty())
                 .name(request.getName())
                 .description(request.getDescription())
-                .category(category)
+                .category(toProductStorageCategory(displayCategory))
                 .supplier(request.getSupplier())
                 .lowStockThreshold(request.getLowStockThreshold() != null ? request.getLowStockThreshold() : BigDecimal.TEN)
                 .stockLevel(request.getStockLevel())
@@ -56,16 +60,20 @@ public class InventoryApplicationService {
                 .build();
 
         Product savedProduct = productRepository.save(product);
+        runOptionalSync("syncing product category assignment", () ->
+                syncProductCategoryAssignment(userId, savedProduct.getId().value(), displayCategory)
+        );
         runOptionalSync("recording initial product purchase", () ->
-                recordInventoryPurchase(savedProduct, savedProduct.getStockLevel())
+                recordInventoryPurchase(savedProduct, savedProduct.getStockLevel(), displayCategory)
         );
 
-        return toResponse(savedProduct);
+        return toResponse(savedProduct, displayCategory);
     }
 
     public List<ProductResponse> getAllProducts(Long userId) {
+        Map<Long, String> assignedCategories = getProductCategoryAssignments(userId);
         return productRepository.findByUserId(userId).stream()
-                .map(this::toResponse)
+                .map(product -> toResponse(product, assignedCategories.get(product.getId().value())))
                 .toList();
     }
 
@@ -77,7 +85,7 @@ public class InventoryApplicationService {
             throw new ValidationException("You do not have access to this product");
         }
 
-        return toResponse(product);
+        return toResponse(product, displayCategoryForProduct(userId, product));
     }
 
     public ProductResponse updateProduct(Long userId, Long productId, ProductRequest request) {
@@ -97,15 +105,16 @@ public class InventoryApplicationService {
         validateProductRequest(request);
 
         BigDecimal previousStockLevel = product.getStockLevel();
-        String previousCategory = product.getCategory();
+        String previousDisplayCategory = displayCategoryForProduct(userId, product);
         boolean categoryProvided = request.getCategory() != null;
-        String category = categoryProvided ? normalizeCategory(request.getCategory()) : product.getCategory();
-        runOptionalSync("ensuring product category", () -> ensureCategoryExists(userId, category));
+        String displayCategory = categoryProvided ? normalizeCategory(request.getCategory()) : previousDisplayCategory;
+        String storageCategory = categoryProvided ? toProductStorageCategory(displayCategory) : product.getCategory();
+        runOptionalSync("ensuring product category", () -> ensureCategoryExists(userId, displayCategory));
 
         product.updateDetails(
                 request.getName(),
                 request.getDescription(),
-                category,
+                storageCategory,
                 request.getSupplier(),
                 request.getStockLevel(),
                 request.getUnitCost(),
@@ -113,13 +122,18 @@ public class InventoryApplicationService {
                 request.getUnitOfMeasure()
         );
         if (categoryProvided) {
-            product.setCategory(category);
+            product.setCategory(storageCategory);
         }
 
         Product updatedProduct = productRepository.save(product);
-        syncProductPurchaseHistory(userId, productId, updatedProduct, previousStockLevel, previousCategory, request.getStockLevel());
+        if (categoryProvided) {
+            runOptionalSync("syncing product category assignment", () ->
+                    syncProductCategoryAssignment(userId, productId, displayCategory)
+            );
+        }
+        syncProductPurchaseHistory(userId, productId, updatedProduct, previousStockLevel, previousDisplayCategory, displayCategory, request.getStockLevel());
 
-        return toResponse(updatedProduct);
+        return toResponse(updatedProduct, displayCategory);
     }
 
     public void deleteProduct(Long userId, Long productId) {
@@ -131,10 +145,14 @@ public class InventoryApplicationService {
         }
 
         productRepository.delete(Product.ProductId.of(productId));
+        runOptionalSync("clearing product category assignment", () ->
+                clearProductCategoryAssignment(userId, productId)
+        );
     }
 
     public List<InventoryCategoryResponse> getCategories(Long userId) {
         return inventoryCategoryRepository.findByUserId(userId).stream()
+                .filter(category -> !isProductCategoryAssignment(category.getName()))
                 .sorted(Comparator.comparing(InventoryCategory::getName, String.CASE_INSENSITIVE_ORDER))
                 .map(this::toCategoryResponse)
                 .toList();
@@ -182,6 +200,9 @@ public class InventoryApplicationService {
 
         if (!previousName.equalsIgnoreCase(newName)) {
             renameProductsCategory(userId, previousName, newName);
+            runOptionalSync("renaming product category assignments", () ->
+                    renameProductCategoryAssignments(userId, previousName, newName)
+            );
             runOptionalSync("renaming purchase categories", () ->
                     inventoryPurchaseRepository.renameCategory(userId, previousName, newName)
             );
@@ -199,6 +220,9 @@ public class InventoryApplicationService {
         }
 
         clearProductsCategory(userId, category.getName());
+        runOptionalSync("clearing product category assignments", () ->
+                clearProductCategoryAssignmentsByName(userId, category.getName())
+        );
         runOptionalSync("clearing purchase categories", () ->
                 inventoryPurchaseRepository.clearCategory(userId, category.getName())
         );
@@ -221,11 +245,15 @@ public class InventoryApplicationService {
     }
 
     private ProductResponse toResponse(Product product) {
+        return toResponse(product, null);
+    }
+
+    private ProductResponse toResponse(Product product, String assignedCategory) {
         return ProductResponse.builder()
                 .id(product.getId().value())
                 .name(product.getName())
                 .description(product.getDescription())
-                .category(product.getCategory())
+                .category(displayCategoryOrStorage(product, assignedCategory))
                 .supplier(product.getSupplier())
                 .lowStockThreshold(product.getLowStockThreshold())
                 .stockLevel(product.getStockLevel())
@@ -235,18 +263,18 @@ public class InventoryApplicationService {
                 .build();
     }
 
-    private void recordStockIncrease(Product product, BigDecimal previousStockLevel, BigDecimal newStockLevel) {
+    private void recordStockIncrease(Product product, BigDecimal previousStockLevel, BigDecimal newStockLevel, String displayCategory) {
         if (previousStockLevel == null || newStockLevel == null) {
             return;
         }
 
         BigDecimal quantityPurchased = newStockLevel.subtract(previousStockLevel);
         if (quantityPurchased.compareTo(BigDecimal.ZERO) > 0) {
-            recordInventoryPurchase(product, quantityPurchased);
+            recordInventoryPurchase(product, quantityPurchased, displayCategory);
         }
     }
 
-    private void recordInventoryPurchase(Product product, BigDecimal quantityPurchased) {
+    private void recordInventoryPurchase(Product product, BigDecimal quantityPurchased, String displayCategory) {
         if (quantityPurchased == null || quantityPurchased.compareTo(BigDecimal.ZERO) <= 0) {
             return;
         }
@@ -257,7 +285,7 @@ public class InventoryApplicationService {
                 .userId(product.getUserId())
                 .productId(product.getId().value())
                 .productName(product.getName())
-                .category(categoryOrDefault(product.getCategory()))
+                .category(categoryOrDefault(displayCategory != null ? displayCategory : product.getCategory()))
                 .quantity(quantityPurchased)
                 .unitCost(unitCost)
                 .totalCost(unitCost.multiply(quantityPurchased))
@@ -268,21 +296,22 @@ public class InventoryApplicationService {
     }
 
     private void syncProductPurchaseHistory(Long userId, Long productId, Product updatedProduct,
-                                            BigDecimal previousStockLevel, String previousCategory,
+                                            BigDecimal previousStockLevel, String previousDisplayCategory,
+                                            String displayCategory,
                                             BigDecimal requestedStockLevel) {
         runOptionalSync("syncing product purchase history", () -> {
             boolean hasPurchaseHistory = inventoryPurchaseRepository.existsByUserIdAndProductId(userId, productId);
             if (hasPurchaseHistory) {
-                if (!categoryOrDefault(previousCategory).equalsIgnoreCase(categoryOrDefault(updatedProduct.getCategory()))) {
+                if (!categoryOrDefault(previousDisplayCategory).equalsIgnoreCase(categoryOrDefault(displayCategory))) {
                     inventoryPurchaseRepository.updateProductCategory(
                             userId,
                             productId,
-                            categoryOrDefault(updatedProduct.getCategory())
+                            categoryOrDefault(displayCategory)
                     );
                 }
-                recordStockIncrease(updatedProduct, previousStockLevel, requestedStockLevel);
+                recordStockIncrease(updatedProduct, previousStockLevel, requestedStockLevel, displayCategory);
             } else {
-                recordInventoryPurchase(updatedProduct, updatedProduct.getStockLevel());
+                recordInventoryPurchase(updatedProduct, updatedProduct.getStockLevel(), displayCategory);
             }
         });
     }
@@ -293,6 +322,155 @@ public class InventoryApplicationService {
         } catch (RuntimeException ex) {
             log.warn("Skipping optional inventory sync while {}: {}", action, ex.getMessage());
         }
+    }
+
+    private String displayCategoryOrStorage(Product product, String assignedCategory) {
+        String normalizedAssigned = normalizeCategory(assignedCategory);
+        if (normalizedAssigned != null) {
+            return normalizedAssigned;
+        }
+        return normalizeCategory(product.getCategory());
+    }
+
+    private String displayCategoryForProduct(Long userId, Product product) {
+        return findAssignedProductCategory(userId, product.getId().value())
+                .orElseGet(() -> normalizeCategory(product.getCategory()));
+    }
+
+    private Map<Long, String> getProductCategoryAssignments(Long userId) {
+        Map<Long, String> assignments = new HashMap<>();
+        try {
+            inventoryCategoryRepository.findByUserId(userId).stream()
+                    .map(this::parseProductCategoryAssignment)
+                    .flatMap(Optional::stream)
+                    .forEach(assignment -> assignments.put(assignment.productId(), assignment.categoryName()));
+        } catch (RuntimeException ex) {
+            log.warn("Skipping product category assignments for user {}: {}", userId, ex.getMessage());
+        }
+        return assignments;
+    }
+
+    private Optional<String> findAssignedProductCategory(Long userId, Long productId) {
+        String prefix = productCategoryAssignmentPrefix(productId);
+        try {
+            return inventoryCategoryRepository.findByUserId(userId).stream()
+                    .map(InventoryCategory::getName)
+                    .filter(name -> name != null && name.startsWith(prefix))
+                    .map(name -> normalizeCategory(name.substring(prefix.length())))
+                    .filter(name -> name != null)
+                    .findFirst();
+        } catch (RuntimeException ex) {
+            log.warn("Skipping product category assignment lookup for product {}: {}", productId, ex.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    private void syncProductCategoryAssignment(Long userId, Long productId, String categoryName) {
+        clearProductCategoryAssignment(userId, productId);
+
+        String normalized = normalizeCategory(categoryName);
+        if (normalized == null) {
+            return;
+        }
+
+        String assignmentName = productCategoryAssignmentName(productId, normalized);
+        InventoryCategory category = InventoryCategory.builder()
+                .id(InventoryCategory.InventoryCategoryId.empty())
+                .userId(userId)
+                .name(assignmentName)
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+        inventoryCategoryRepository.save(category);
+    }
+
+    private void clearProductCategoryAssignment(Long userId, Long productId) {
+        String prefix = productCategoryAssignmentPrefix(productId);
+        inventoryCategoryRepository.findByUserId(userId).stream()
+                .filter(category -> category.getName() != null && category.getName().startsWith(prefix))
+                .forEach(category -> inventoryCategoryRepository.delete(category.getId()));
+    }
+
+    private void renameProductCategoryAssignments(Long userId, String previousName, String newName) {
+        String normalizedPrevious = normalizeCategory(previousName);
+        String normalizedNew = normalizeCategory(newName);
+        if (normalizedPrevious == null || normalizedNew == null) {
+            return;
+        }
+
+        inventoryCategoryRepository.findByUserId(userId).stream()
+                .map(this::parseProductCategoryAssignment)
+                .flatMap(Optional::stream)
+                .filter(assignment -> normalizedPrevious.equalsIgnoreCase(assignment.categoryName()))
+                .forEach(assignment -> syncProductCategoryAssignment(userId, assignment.productId(), normalizedNew));
+    }
+
+    private void clearProductCategoryAssignmentsByName(Long userId, String categoryName) {
+        String normalizedCategory = normalizeCategory(categoryName);
+        if (normalizedCategory == null) {
+            return;
+        }
+
+        inventoryCategoryRepository.findByUserId(userId).stream()
+                .map(this::parseProductCategoryAssignment)
+                .flatMap(Optional::stream)
+                .filter(assignment -> normalizedCategory.equalsIgnoreCase(assignment.categoryName()))
+                .forEach(assignment -> {
+                    clearProductCategoryAssignment(userId, assignment.productId());
+                    productRepository.findById(Product.ProductId.of(assignment.productId()))
+                            .filter(product -> product.getUserId().equals(userId))
+                            .ifPresent(product -> {
+                                product.setCategory(null);
+                                product.setUpdatedAt(LocalDateTime.now());
+                                productRepository.save(product);
+                            });
+                });
+    }
+
+    private Optional<ProductCategoryAssignment> parseProductCategoryAssignment(InventoryCategory category) {
+        String name = category.getName();
+        if (!isProductCategoryAssignment(name)) {
+            return Optional.empty();
+        }
+
+        int productIdStart = PRODUCT_CATEGORY_ASSIGNMENT_PREFIX.length();
+        int categorySeparator = name.indexOf(':', productIdStart);
+        if (categorySeparator <= productIdStart || categorySeparator >= name.length() - 1) {
+            return Optional.empty();
+        }
+
+        try {
+            Long productId = Long.valueOf(name.substring(productIdStart, categorySeparator));
+            String categoryName = normalizeCategory(name.substring(categorySeparator + 1));
+            return categoryName != null
+                    ? Optional.of(new ProductCategoryAssignment(productId, categoryName))
+                    : Optional.empty();
+        } catch (NumberFormatException ex) {
+            return Optional.empty();
+        }
+    }
+
+    private boolean isProductCategoryAssignment(String categoryName) {
+        return categoryName != null && categoryName.startsWith(PRODUCT_CATEGORY_ASSIGNMENT_PREFIX);
+    }
+
+    private String productCategoryAssignmentPrefix(Long productId) {
+        return PRODUCT_CATEGORY_ASSIGNMENT_PREFIX + productId + ":";
+    }
+
+    private String productCategoryAssignmentName(Long productId, String categoryName) {
+        String prefix = productCategoryAssignmentPrefix(productId);
+        int maxNameLength = Math.max(0, MAX_CATEGORY_NAME_LENGTH - prefix.length());
+        String normalized = normalizeCategory(categoryName);
+        String displayName = normalized != null ? normalized : UNCATEGORIZED;
+        if (displayName.length() > maxNameLength) {
+            displayName = displayName.substring(0, maxNameLength);
+        }
+        return prefix + displayName;
+    }
+
+    private String toProductStorageCategory(String categoryName) {
+        return null;
     }
 
     private void ensureCategoryExists(Long userId, String categoryName) {
@@ -315,7 +493,7 @@ public class InventoryApplicationService {
         productRepository.findByUserId(userId).stream()
                 .filter(product -> previousName.equalsIgnoreCase(categoryOrDefault(product.getCategory())))
                 .forEach(product -> {
-                    product.setCategory(newName);
+                    product.setCategory(toProductStorageCategory(newName));
                     product.setUpdatedAt(LocalDateTime.now());
                     productRepository.save(product);
                 });
@@ -373,5 +551,8 @@ public class InventoryApplicationService {
     private String categoryOrDefault(String category) {
         String normalized = normalizeCategory(category);
         return normalized != null ? normalized : UNCATEGORIZED;
+    }
+
+    private record ProductCategoryAssignment(Long productId, String categoryName) {
     }
 }
