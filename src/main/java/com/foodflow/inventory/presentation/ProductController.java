@@ -2,10 +2,11 @@ package com.foodflow.inventory.presentation;
 
 import com.foodflow.common.presentation.ApiResponse;
 import com.foodflow.identity.infrastructure.UserAuthentication;
+import com.foodflow.inventory.application.InventoryCategoryRequest;
+import com.foodflow.inventory.application.InventoryCategoryResponse;
 import com.foodflow.inventory.application.InventoryApplicationService;
 import com.foodflow.inventory.application.ProductRequest;
 import com.foodflow.inventory.application.ProductResponse;
-import com.foodflow.inventory.domain.ProductCategory;
 import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -16,9 +17,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
-import java.util.Arrays;
 
 @RestController
 @RequestMapping("/api/products")
@@ -79,16 +77,40 @@ public class ProductController {
     }
 
     @GetMapping("/categories")
-    @Operation(summary = "Get product categories", description = "Retrieve all available product categories")
-    public ApiResponse<List<Map<String, String>>> getCategories() {
-        List<Map<String, String>> categories = Arrays.stream(ProductCategory.values())
-                .map(cat -> Map.of(
-                        "value", cat.name(),
-                        "label", cat.getDisplayName(),
-                        "labelEs", cat.getDisplayNameEs(),
-                        "labelEn", cat.getDisplayNameEn()
-                ))
-                .collect(Collectors.toList());
+    @Operation(summary = "Get product categories", description = "Retrieve the authenticated user's custom product categories")
+    public ApiResponse<List<InventoryCategoryResponse>> getCategories(
+            @AuthenticationPrincipal UserAuthentication userAuth) {
+        List<InventoryCategoryResponse> categories = inventoryApplicationService.getCategories(userAuth.getUserId());
         return ApiResponse.success(categories);
+    }
+
+    @PostMapping("/categories")
+    @Operation(summary = "Create product category", description = "Create a custom product category for the authenticated user")
+    public ApiResponse<InventoryCategoryResponse> createCategory(
+            @AuthenticationPrincipal UserAuthentication userAuth,
+            @Valid @RequestBody InventoryCategoryRequest request) {
+        InventoryCategoryResponse response = inventoryApplicationService.createCategory(userAuth.getUserId(), request);
+        return ApiResponse.success("Category created successfully", response);
+    }
+
+    @PutMapping("/categories/{id}")
+    @Operation(summary = "Update product category", description = "Rename a custom product category owned by the authenticated user")
+    public ApiResponse<InventoryCategoryResponse> updateCategory(
+            @AuthenticationPrincipal UserAuthentication userAuth,
+            @Parameter(description = "Category ID", required = true)
+            @PathVariable Long id,
+            @Valid @RequestBody InventoryCategoryRequest request) {
+        InventoryCategoryResponse response = inventoryApplicationService.updateCategory(userAuth.getUserId(), id, request);
+        return ApiResponse.success("Category updated successfully", response);
+    }
+
+    @DeleteMapping("/categories/{id}")
+    @Operation(summary = "Delete product category", description = "Delete a custom product category owned by the authenticated user")
+    public ApiResponse<Void> deleteCategory(
+            @AuthenticationPrincipal UserAuthentication userAuth,
+            @Parameter(description = "Category ID", required = true)
+            @PathVariable Long id) {
+        inventoryApplicationService.deleteCategory(userAuth.getUserId(), id);
+        return ApiResponse.success("Category deleted successfully", null);
     }
 }

@@ -19,11 +19,22 @@ public class Order {
     private String orderNumber;
 
     public enum OrderStatus {
-        PENDING,
-        PREPARING,
-        READY,
-        DELIVERED,
-        CANCELLED
+        PENDIENTE,
+        ENTREGADA,
+        CANCELADA;
+
+        public static OrderStatus fromStorage(String value) {
+            if (value == null || value.isBlank()) {
+                return PENDIENTE;
+            }
+
+            return switch (value.trim().toUpperCase()) {
+                case "PENDIENTE", "PENDING", "PREPARING", "READY" -> PENDIENTE;
+                case "ENTREGADA", "DELIVERED" -> ENTREGADA;
+                case "CANCELADA", "CANCELLED" -> CANCELADA;
+                default -> throw new ValidationException("Invalid order status: " + value);
+            };
+        }
     }
 
     public Order() {
@@ -133,45 +144,39 @@ public class Order {
     }
 
     /**
-     * Advance the order status to the next state
-     * PENDING -> PREPARING -> READY -> DELIVERED
-     * Cannot advance from CANCELLED or DELIVERED
+     * Advance the order status to the final delivered state.
      */
     public void advanceStatus() {
         if (this.status == null) {
-            this.status = OrderStatus.PENDING;
+            this.status = OrderStatus.PENDIENTE;
             return;
         }
 
-        if (this.status == OrderStatus.DELIVERED || this.status == OrderStatus.CANCELLED) {
+        if (this.status == OrderStatus.ENTREGADA || this.status == OrderStatus.CANCELADA) {
             throw new ValidationException("Cannot advance status from " + this.status);
         }
 
-        OrderStatus[] statuses = OrderStatus.values();
-        int currentIndex = this.status.ordinal();
-        if (currentIndex < statuses.length - 1) {
-            this.status = statuses[currentIndex + 1];
-        }
+        this.status = OrderStatus.ENTREGADA;
     }
 
     /**
      * Cancel the order
      */
     public void cancel() {
-        if (this.status == OrderStatus.DELIVERED) {
+        if (this.status == OrderStatus.ENTREGADA) {
             throw new ValidationException("Cannot cancel a delivered order");
         }
-        if (this.status == OrderStatus.CANCELLED) {
+        if (this.status == OrderStatus.CANCELADA) {
             throw new ValidationException("Order is already cancelled");
         }
-        this.status = OrderStatus.CANCELLED;
+        this.status = OrderStatus.CANCELADA;
     }
 
     /**
-     * Check if the order is in a final state (DELIVERED or CANCELLED)
+     * Check if the order is in a final state.
      */
     public boolean isFinalState() {
-        return this.status == OrderStatus.DELIVERED || this.status == OrderStatus.CANCELLED;
+        return this.status == OrderStatus.ENTREGADA || this.status == OrderStatus.CANCELADA;
     }
 
     /**

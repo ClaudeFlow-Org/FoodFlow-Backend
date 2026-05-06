@@ -68,7 +68,7 @@ public class SalesApplicationService {
                 .orderDate(LocalDateTime.now())
                 .lineItems(lineItems)
                 .totalAmount(BigDecimal.ZERO)
-                .status(Order.OrderStatus.PENDING)
+                .status(Order.OrderStatus.PENDIENTE)
                 .orderNumber(orderNumber)
                 .build();
 
@@ -126,7 +126,7 @@ public class SalesApplicationService {
                 .orderDate(order.getOrderDate())
                 .lineItems(lineItemResponses)
                 .totalAmount(order.getTotalAmount())
-                .status(order.getStatus() != null ? order.getStatus() : Order.OrderStatus.PENDING)
+                .status(order.getStatus() != null ? order.getStatus() : Order.OrderStatus.PENDIENTE)
                 .build();
     }
 

@@ -1,6 +1,4 @@
 package com.foodflow.inventory.infrastructure;
-
-import com.foodflow.inventory.domain.ProductCategory;
 import jakarta.persistence.*;
 
 import java.math.BigDecimal;
@@ -20,9 +18,8 @@ public class ProductJpaEntity {
     @Column(length = 500)
     private String description;
 
-    @Enumerated(EnumType.STRING)
-    @Column(length = 50)
-    private ProductCategory category;
+    @Column(length = 80)
+    private String category;
 
     @Column(length = 200)
     private String supplier;
@@ -79,11 +76,11 @@ public class ProductJpaEntity {
         this.description = description;
     }
 
-    public ProductCategory getCategory() {
+    public String getCategory() {
         return category;
     }
 
-    public void setCategory(ProductCategory category) {
+    public void setCategory(String category) {
         this.category = category;
     }
 
@@ -159,9 +156,6 @@ public class ProductJpaEntity {
         if (lowStockThreshold == null) {
             lowStockThreshold = BigDecimal.TEN;
         }
-        if (category == null) {
-            category = ProductCategory.OTHER;
-        }
     }
 
     @PreUpdate
@@ -173,7 +167,7 @@ public class ProductJpaEntity {
         private Long id;
         private String name;
         private String description;
-        private ProductCategory category;
+        private String category;
         private String supplier;
         private BigDecimal lowStockThreshold;
         private BigDecimal stockLevel;
@@ -198,7 +192,7 @@ public class ProductJpaEntity {
             return this;
         }
 
-        public Builder category(ProductCategory category) {
+        public Builder category(String category) {
             this.category = category;
             return this;
         }

@@ -1,6 +1,9 @@
 package com.foodflow.finance.application;
 
+import com.foodflow.common.domain.ValidationException;
 import com.foodflow.finance.domain.*;
+import com.foodflow.inventory.domain.InventoryPurchase;
+import com.foodflow.inventory.domain.InventoryPurchaseRepository;
 import com.foodflow.inventory.domain.Product;
 import com.foodflow.inventory.domain.ProductRepository;
 import com.foodflow.sales.domain.Order;
@@ -17,36 +20,43 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class FinanceApplicationService {
 
+    private static final String UNCATEGORIZED = "Sin categoria";
+
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
+    private final InventoryPurchaseRepository inventoryPurchaseRepository;
 
-    public DashboardResponse getDashboard(Long userId) {
+    public DashboardResponse getDashboard(Long userId, String periodStr) {
+        ReportPeriod period = parsePeriod(periodStr);
         LocalDateTime now = LocalDateTime.now();
-        LocalDateTime todayStart = now.toLocalDate().atStartOfDay();
-        LocalDateTime todayEnd = todayStart.plusDays(1);
+        LocalDateTime start = period.getPeriodStart(now);
+        LocalDateTime end = period.getPeriodEnd(now);
+        LocalDateTime previousStart = period.getPreviousPeriodStart(now);
+        LocalDateTime previousEnd = period.getPreviousPeriodEnd(now);
 
-        LocalDateTime yesterdayStart = todayStart.minusDays(1);
-        LocalDateTime yesterdayEnd = todayStart;
+        FinancialMetrics currentMetrics = calculateMetrics(userId, start, end);
+        FinancialMetrics previousMetrics = calculateMetrics(userId, previousStart, previousEnd);
+        currentMetrics.calculateVariations(previousMetrics);
 
-        FinancialMetrics todayMetrics = calculateMetrics(userId, todayStart, todayEnd);
-        FinancialMetrics yesterdayMetrics = calculateMetrics(userId, yesterdayStart, yesterdayEnd);
-
-        todayMetrics.calculateVariations(yesterdayMetrics);
-
-        List<TopDish> topDishes = getTopDishes(userId, 5);
+        List<Order> ordersInPeriod = orderRepository.findByUserIdAndDateBetween(userId, start, end);
+        List<TopDish> topDishes = getTopDishesFromOrders(ordersInPeriod, 5);
 
         return DashboardResponse.builder()
-                .totalIncome(todayMetrics.getTotalIncome())
-                .totalExpenses(todayMetrics.getTotalExpenses())
-                .netProfit(todayMetrics.getNetProfit())
-                .incomeVariation(todayMetrics.getIncomeVariation())
-                .expensesVariation(todayMetrics.getExpensesVariation())
+                .period(period.name())
+                .startDate(start)
+                .endDate(end)
+                .totalIncome(currentMetrics.getTotalIncome())
+                .totalExpenses(currentMetrics.getTotalExpenses())
+                .netProfit(currentMetrics.getNetProfit())
+                .incomeVariation(currentMetrics.getIncomeVariation())
+                .expensesVariation(currentMetrics.getExpensesVariation())
+                .orderCount((long) ordersInPeriod.size())
                 .top5Dishes(topDishes.stream().map(this::toTopDishResponse).collect(Collectors.toList()))
                 .build();
     }
 
     public FinancialReportResponse getFinancialReport(Long userId, String periodStr) {
-        ReportPeriod period = ReportPeriod.valueOf(periodStr.toUpperCase());
+        ReportPeriod period = parsePeriod(periodStr);
         LocalDateTime now = LocalDateTime.now();
 
         LocalDateTime start = period.getPeriodStart(now);
@@ -60,11 +70,9 @@ public class FinanceApplicationService {
 
         currentMetrics.calculateVariations(previousMetrics);
 
-        List<TopDish> topDishes = getTopDishes(userId, 10);
-        List<ExpenseCategory> expenseBreakdown = calculateExpenseBreakdown(userId, start, end);
-
-        // Calculate order count for the period
         List<Order> ordersInPeriod = orderRepository.findByUserIdAndDateBetween(userId, start, end);
+        List<TopDish> topDishes = getTopDishesFromOrders(ordersInPeriod, 10);
+        List<ExpenseCategory> expenseBreakdown = calculateExpenseBreakdown(userId, start, end);
         Long orderCount = (long) ordersInPeriod.size();
 
         return FinancialReportResponse.builder()
@@ -82,14 +90,11 @@ public class FinanceApplicationService {
         List<Order> orders = orderRepository.findByUserIdAndDateBetween(userId, start, end);
 
         BigDecimal totalIncome = orders.stream()
+                .filter(this::isDelivered)
                 .map(Order::getTotalAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        List<Product> products = productRepository.findByUserId(userId);
-        BigDecimal totalExpenses = products.stream()
-                .map(p -> p.getUnitCost().multiply(p.getStockLevel()))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
+        BigDecimal totalExpenses = calculateExpenses(userId, start, end);
         BigDecimal netProfit = totalIncome.subtract(totalExpenses);
 
         return FinancialMetrics.builder()
@@ -99,12 +104,10 @@ public class FinanceApplicationService {
                 .build();
     }
 
-    private List<TopDish> getTopDishes(Long userId, int limit) {
-        List<Order> orders = orderRepository.findByUserId(userId);
-
+    private List<TopDish> getTopDishesFromOrders(List<Order> orders, int limit) {
         Map<Long, TopDish> dishStats = new HashMap<>();
 
-        for (Order order : orders) {
+        for (Order order : orders.stream().filter(this::isDelivered).toList()) {
             for (OrderLineItem item : order.getLineItems()) {
                 dishStats.computeIfAbsent(item.getDishId(), k -> TopDish.builder()
                         .dishId(item.getDishId())
@@ -126,16 +129,27 @@ public class FinanceApplicationService {
     }
 
     private List<ExpenseCategory> calculateExpenseBreakdown(Long userId, LocalDateTime start, LocalDateTime end) {
-        List<Product> products = productRepository.findByUserId(userId);
         Map<String, BigDecimal> categoryExpenses = new LinkedHashMap<>();
 
-        // Agrupar por categoría
+        List<InventoryPurchase> purchases = inventoryPurchaseRepository.findByUserIdAndPurchasedAtBetween(userId, start, end);
+        for (InventoryPurchase purchase : purchases) {
+            categoryExpenses.merge(
+                    categoryOrDefault(purchase.getCategory()),
+                    purchase.getTotalCost(),
+                    BigDecimal::add
+            );
+        }
+
+        Set<Long> productIdsWithPurchases = inventoryPurchaseRepository.findProductIdsWithPurchases(userId);
+        List<Product> products = productRepository.findByUserId(userId);
         for (Product product : products) {
-            String category = product.getCategory() != null
-                ? product.getCategory().getDisplayName()
-                : "Sin categoría";
-            BigDecimal expense = product.getUnitCost().multiply(product.getStockLevel());
-            categoryExpenses.merge(category, expense, BigDecimal::add);
+            if (hasPurchaseRecord(productIdsWithPurchases, product)) {
+                continue;
+            }
+            if (isWithinPeriod(product.getCreatedAt(), start, end)) {
+                BigDecimal expense = safeMultiply(product.getUnitCost(), product.getStockLevel());
+                categoryExpenses.merge(categoryOrDefault(product.getCategory()), expense, BigDecimal::add);
+            }
         }
 
         BigDecimal totalExpenses = categoryExpenses.values().stream()
@@ -152,6 +166,21 @@ public class FinanceApplicationService {
                 })
                 .sorted((a, b) -> b.getAmount().compareTo(a.getAmount()))
                 .collect(Collectors.toList());
+    }
+
+    private BigDecimal calculateExpenses(Long userId, LocalDateTime start, LocalDateTime end) {
+        BigDecimal purchaseExpenses = inventoryPurchaseRepository.findByUserIdAndPurchasedAtBetween(userId, start, end).stream()
+                .map(InventoryPurchase::getTotalCost)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        Set<Long> productIdsWithPurchases = inventoryPurchaseRepository.findProductIdsWithPurchases(userId);
+        BigDecimal legacyExpenses = productRepository.findByUserId(userId).stream()
+                .filter(product -> !hasPurchaseRecord(productIdsWithPurchases, product))
+                .filter(product -> isWithinPeriod(product.getCreatedAt(), start, end))
+                .map(product -> safeMultiply(product.getUnitCost(), product.getStockLevel()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        return purchaseExpenses.add(legacyExpenses);
     }
 
     private FinancialMetricsResponse toMetricsResponse(FinancialMetrics metrics) {
@@ -179,5 +208,53 @@ public class FinanceApplicationService {
                 .amount(category.getAmount())
                 .percentage(category.getPercentage())
                 .build();
+    }
+
+    private boolean isDelivered(Order order) {
+        return order.getStatus() == Order.OrderStatus.ENTREGADA;
+    }
+
+    private boolean hasPurchaseRecord(Set<Long> productIdsWithPurchases, Product product) {
+        return product.getId() != null
+                && product.getId().value() != null
+                && productIdsWithPurchases.contains(product.getId().value());
+    }
+
+    private boolean isWithinPeriod(LocalDateTime date, LocalDateTime start, LocalDateTime end) {
+        return date != null && !date.isBefore(start) && date.isBefore(end);
+    }
+
+    private BigDecimal safeMultiply(BigDecimal unitCost, BigDecimal quantity) {
+        if (unitCost == null || quantity == null) {
+            return BigDecimal.ZERO;
+        }
+        return unitCost.multiply(quantity);
+    }
+
+    private String categoryOrDefault(String category) {
+        if (category == null || category.isBlank()) {
+            return UNCATEGORIZED;
+        }
+
+        return switch (category.trim().toUpperCase()) {
+            case "MEAT" -> "Carnes";
+            case "VEGETABLES" -> "Vegetales";
+            case "DAIRY" -> "Lacteos";
+            case "BEVERAGES" -> "Bebidas";
+            case "BAKERY" -> "Panaderia";
+            case "CONDIMENTS" -> "Condimentos";
+            case "GRAINS" -> "Granos";
+            case "SNACKS" -> "Snacks";
+            case "OTHER" -> "Otro";
+            default -> category.trim();
+        };
+    }
+
+    private ReportPeriod parsePeriod(String periodStr) {
+        try {
+            return ReportPeriod.valueOf((periodStr == null ? "DAILY" : periodStr).toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            throw new ValidationException("period", "Period must be DAILY, WEEKLY, or MONTHLY");
+        }
     }
 }

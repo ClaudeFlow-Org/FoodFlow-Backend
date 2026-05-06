@@ -8,7 +8,7 @@ public class ProductResponse {
     private Long id;
     private String name;
     private String description;
-    private String category; // String representation of ProductCategory enum
+    private String category;
     private String supplier;
     private BigDecimal lowStockThreshold;
     private BigDecimal stockLevel;
