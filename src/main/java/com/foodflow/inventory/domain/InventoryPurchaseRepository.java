@@ -2,7 +2,6 @@ package com.foodflow.inventory.domain;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Set;
 
 public interface InventoryPurchaseRepository {
 
@@ -10,5 +9,7 @@ public interface InventoryPurchaseRepository {
 
     List<InventoryPurchase> findByUserIdAndPurchasedAtBetween(Long userId, LocalDateTime startDate, LocalDateTime endDate);
 
-    Set<Long> findProductIdsWithPurchases(Long userId);
+    void renameCategory(Long userId, String previousName, String newName);
+
+    void clearCategory(Long userId, String categoryName);
 }

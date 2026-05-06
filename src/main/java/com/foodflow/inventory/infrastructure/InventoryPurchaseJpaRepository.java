@@ -1,13 +1,14 @@
 package com.foodflow.inventory.infrastructure;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Set;
 
 @Repository
 public interface InventoryPurchaseJpaRepository extends JpaRepository<InventoryPurchaseJpaEntity, Long> {
@@ -17,6 +18,16 @@ public interface InventoryPurchaseJpaRepository extends JpaRepository<InventoryP
                                                                         @Param("startDate") LocalDateTime startDate,
                                                                         @Param("endDate") LocalDateTime endDate);
 
-    @Query("SELECT DISTINCT p.productId FROM InventoryPurchaseJpaEntity p WHERE p.userId = :userId AND p.productId IS NOT NULL")
-    Set<Long> findProductIdsWithPurchases(@Param("userId") Long userId);
+    @Modifying
+    @Transactional
+    @Query("UPDATE InventoryPurchaseJpaEntity p SET p.category = :newName WHERE p.userId = :userId AND LOWER(p.category) = LOWER(:previousName)")
+    void renameCategory(@Param("userId") Long userId,
+                        @Param("previousName") String previousName,
+                        @Param("newName") String newName);
+
+    @Modifying
+    @Transactional
+    @Query("UPDATE InventoryPurchaseJpaEntity p SET p.category = NULL WHERE p.userId = :userId AND LOWER(p.category) = LOWER(:categoryName)")
+    void clearCategory(@Param("userId") Long userId,
+                       @Param("categoryName") String categoryName);
 }

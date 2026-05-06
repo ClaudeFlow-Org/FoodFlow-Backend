@@ -172,6 +172,7 @@ public class InventoryApplicationService {
 
         if (!previousName.equalsIgnoreCase(newName)) {
             renameProductsCategory(userId, previousName, newName);
+            inventoryPurchaseRepository.renameCategory(userId, previousName, newName);
         }
 
         return toCategoryResponse(savedCategory);
@@ -186,6 +187,7 @@ public class InventoryApplicationService {
         }
 
         clearProductsCategory(userId, category.getName());
+        inventoryPurchaseRepository.clearCategory(userId, category.getName());
         inventoryCategoryRepository.delete(InventoryCategory.InventoryCategoryId.of(categoryId));
     }
 
