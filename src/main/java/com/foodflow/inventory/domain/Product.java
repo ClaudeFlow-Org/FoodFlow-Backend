@@ -8,7 +8,7 @@ public class Product {
     private ProductId id;
     private String name;
     private String description;
-    private ProductCategory category;
+    private String category;
     private String supplier;
     private BigDecimal lowStockThreshold;
     private BigDecimal stockLevel;
@@ -21,7 +21,7 @@ public class Product {
     public Product() {
     }
 
-    public Product(ProductId id, String name, String description, ProductCategory category, String supplier,
+    public Product(ProductId id, String name, String description, String category, String supplier,
                    BigDecimal lowStockThreshold, BigDecimal stockLevel, BigDecimal unitCost, String unitOfMeasure,
                    Long userId, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
@@ -67,11 +67,11 @@ public class Product {
         this.description = description;
     }
 
-    public ProductCategory getCategory() {
+    public String getCategory() {
         return category;
     }
 
-    public void setCategory(ProductCategory category) {
+    public void setCategory(String category) {
         this.category = category;
     }
 
@@ -139,7 +139,7 @@ public class Product {
         this.updatedAt = updatedAt;
     }
 
-    public void updateDetails(String name, String description, ProductCategory category,
+    public void updateDetails(String name, String description, String category,
                              String supplier, BigDecimal stockLevel,
                              BigDecimal unitCost, BigDecimal lowStockThreshold,
                              String unitOfMeasure) {
@@ -184,7 +184,7 @@ public class Product {
         private ProductId id;
         private String name;
         private String description;
-        private ProductCategory category;
+        private String category;
         private String supplier;
         private BigDecimal lowStockThreshold;
         private BigDecimal stockLevel;
@@ -209,7 +209,7 @@ public class Product {
             return this;
         }
 
-        public Builder category(ProductCategory category) {
+        public Builder category(String category) {
             this.category = category;
             return this;
         }

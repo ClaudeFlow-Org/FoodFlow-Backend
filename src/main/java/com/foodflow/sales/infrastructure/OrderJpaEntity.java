@@ -28,9 +28,8 @@ public class OrderJpaEntity {
     @Column(name = "total_amount", nullable = false, precision = 12, scale = 2)
     private BigDecimal totalAmount;
 
-    @Enumerated(EnumType.STRING)
     @Column(name = "status", length = 20)
-    private Order.OrderStatus status = Order.OrderStatus.PENDING;
+    private String status = Order.OrderStatus.PENDIENTE.name();
 
     @Column(name = "order_number", length = 20)
     private String orderNumber;
@@ -85,11 +84,11 @@ public class OrderJpaEntity {
         this.totalAmount = totalAmount;
     }
 
-    public Order.OrderStatus getStatus() {
+    public String getStatus() {
         return status;
     }
 
-    public void setStatus(Order.OrderStatus status) {
+    public void setStatus(String status) {
         this.status = status;
     }
 
@@ -115,7 +114,7 @@ public class OrderJpaEntity {
         private String tableIdentifier;
         private LocalDateTime orderDate;
         private BigDecimal totalAmount;
-        private Order.OrderStatus status = Order.OrderStatus.PENDING;
+        private String status = Order.OrderStatus.PENDIENTE.name();
         private String orderNumber;
         private List<OrderLineItemJpaEntity> lineItems = new ArrayList<>();
 
@@ -144,7 +143,7 @@ public class OrderJpaEntity {
             return this;
         }
 
-        public Builder status(Order.OrderStatus status) {
+        public Builder status(String status) {
             this.status = status;
             return this;
         }

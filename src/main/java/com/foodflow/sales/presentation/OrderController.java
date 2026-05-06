@@ -5,6 +5,7 @@ import com.foodflow.identity.infrastructure.UserAuthentication;
 import com.foodflow.sales.application.OrderRequest;
 import com.foodflow.sales.application.OrderResponse;
 import com.foodflow.sales.application.SalesApplicationService;
+import com.foodflow.sales.domain.Order;
 import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -72,14 +73,14 @@ public class OrderController {
             @AuthenticationPrincipal UserAuthentication userAuth,
             @Parameter(description = "Order ID", required = true)
             @PathVariable Long id,
-            @Parameter(description = "New status", required = true)
-            @RequestParam com.foodflow.sales.domain.Order.OrderStatus status) {
-        OrderResponse response = salesApplicationService.updateOrderStatus(userAuth.getUserId(), id, status);
+            @Parameter(description = "New status: PENDIENTE, ENTREGADA, or CANCELADA", required = true)
+            @RequestParam String status) {
+        OrderResponse response = salesApplicationService.updateOrderStatus(userAuth.getUserId(), id, Order.OrderStatus.fromStorage(status));
         return ApiResponse.success("Order status updated successfully", response);
     }
 
     @PutMapping("/{id}/advance")
-    @Operation(summary = "Advance order status", description = "Advance the order to the next status (PENDING -> PREPARING -> READY -> DELIVERED)")
+    @Operation(summary = "Advance order status", description = "Advance the order from PENDIENTE to ENTREGADA")
     public ApiResponse<OrderResponse> advanceOrderStatus(
             @AuthenticationPrincipal UserAuthentication userAuth,
             @Parameter(description = "Order ID", required = true)

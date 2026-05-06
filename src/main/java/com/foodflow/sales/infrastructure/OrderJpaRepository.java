@@ -15,7 +15,7 @@ public interface OrderJpaRepository extends JpaRepository<OrderJpaEntity, Long> 
     @Query("SELECT o FROM OrderJpaEntity o LEFT JOIN FETCH o.lineItems WHERE o.userId = :userId ORDER BY o.orderDate DESC")
     List<OrderJpaEntity> findByUserIdOrderByOrderDateDesc(Long userId);
 
-    @Query("SELECT o FROM OrderJpaEntity o LEFT JOIN FETCH o.lineItems WHERE o.userId = :userId AND o.orderDate BETWEEN :startDate AND :endDate")
+    @Query("SELECT o FROM OrderJpaEntity o LEFT JOIN FETCH o.lineItems WHERE o.userId = :userId AND o.orderDate >= :startDate AND o.orderDate < :endDate")
     List<OrderJpaEntity> findByUserIdAndDateBetween(@Param("userId") Long userId,
                                                      @Param("startDate") LocalDateTime startDate,
                                                      @Param("endDate") LocalDateTime endDate);

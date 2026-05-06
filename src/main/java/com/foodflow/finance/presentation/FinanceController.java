@@ -25,10 +25,12 @@ public class FinanceController {
     private final FinanceApplicationService financeApplicationService;
 
     @GetMapping("/dashboard")
-    @Operation(summary = "Get financial dashboard", description = "Retrieve dashboard metrics including income, expenses, profit, variations, and top 5 dishes")
+    @Operation(summary = "Get financial dashboard", description = "Retrieve dashboard metrics for DAILY, WEEKLY, or MONTHLY periods")
     public ApiResponse<DashboardResponse> getDashboard(
-            @AuthenticationPrincipal UserAuthentication userAuth) {
-        DashboardResponse response = financeApplicationService.getDashboard(userAuth.getUserId());
+            @AuthenticationPrincipal UserAuthentication userAuth,
+            @Parameter(description = "Report period: DAILY, WEEKLY, or MONTHLY", in = ParameterIn.QUERY)
+            @RequestParam(defaultValue = "DAILY") String period) {
+        DashboardResponse response = financeApplicationService.getDashboard(userAuth.getUserId(), period);
         return ApiResponse.success(response);
     }
 

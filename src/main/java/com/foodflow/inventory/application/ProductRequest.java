@@ -16,7 +16,8 @@ public class ProductRequest {
     @Size(max = 500, message = "Description must not exceed 500 characters")
     private String description;
 
-    private String category; // String to receive from frontend, mapped to enum
+    @Size(max = 80, message = "Category must not exceed 80 characters")
+    private String category;
 
     @Size(max = 200, message = "Supplier must not exceed 200 characters")
     private String supplier;
