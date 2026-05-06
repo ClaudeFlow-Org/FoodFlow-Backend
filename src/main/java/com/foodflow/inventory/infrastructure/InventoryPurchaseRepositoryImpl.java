@@ -33,6 +33,11 @@ public class InventoryPurchaseRepositoryImpl implements InventoryPurchaseReposit
     }
 
     @Override
+    public void updateProductCategory(Long userId, Long productId, String categoryName) {
+        jpaRepository.updateProductCategory(userId, productId, categoryName);
+    }
+
+    @Override
     public void renameCategory(Long userId, String previousName, String newName) {
         jpaRepository.renameCategory(userId, previousName, newName);
     }

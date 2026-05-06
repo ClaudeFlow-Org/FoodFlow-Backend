@@ -11,6 +11,8 @@ public interface InventoryPurchaseRepository {
 
     boolean existsByUserIdAndProductId(Long userId, Long productId);
 
+    void updateProductCategory(Long userId, Long productId, String categoryName);
+
     void renameCategory(Long userId, String previousName, String newName);
 
     void clearCategory(Long userId, String categoryName);
