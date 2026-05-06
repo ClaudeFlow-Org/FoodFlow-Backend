@@ -6,7 +6,6 @@ import lombok.RequiredArgsConstructor;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Set;
 
 @org.springframework.stereotype.Repository
 @RequiredArgsConstructor
@@ -29,7 +28,12 @@ public class InventoryPurchaseRepositoryImpl implements InventoryPurchaseReposit
     }
 
     @Override
-    public Set<Long> findProductIdsWithPurchases(Long userId) {
-        return jpaRepository.findProductIdsWithPurchases(userId);
+    public void renameCategory(Long userId, String previousName, String newName) {
+        jpaRepository.renameCategory(userId, previousName, newName);
+    }
+
+    @Override
+    public void clearCategory(Long userId, String categoryName) {
+        jpaRepository.clearCategory(userId, categoryName);
     }
 }

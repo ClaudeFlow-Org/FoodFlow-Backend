@@ -40,7 +40,7 @@ public enum ReportPeriod {
     public LocalDateTime getPreviousPeriodStart(LocalDateTime referenceDate) {
         return switch (this) {
             case DAILY -> referenceDate.minusDays(1).toLocalDate().atStartOfDay();
-            case WEEKLY -> referenceDate.minusWeeks(1).toLocalDate().atStartOfDay();
+            case WEEKLY -> getPeriodStart(referenceDate.minusWeeks(1));
             case MONTHLY -> referenceDate.minusMonths(1).toLocalDate().with(TemporalAdjusters.firstDayOfMonth()).atStartOfDay();
         };
     }

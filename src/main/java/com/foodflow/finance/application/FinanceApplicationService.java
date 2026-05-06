@@ -4,8 +4,6 @@ import com.foodflow.common.domain.ValidationException;
 import com.foodflow.finance.domain.*;
 import com.foodflow.inventory.domain.InventoryPurchase;
 import com.foodflow.inventory.domain.InventoryPurchaseRepository;
-import com.foodflow.inventory.domain.Product;
-import com.foodflow.inventory.domain.ProductRepository;
 import com.foodflow.sales.domain.Order;
 import com.foodflow.sales.domain.OrderLineItem;
 import com.foodflow.sales.domain.OrderRepository;
@@ -23,7 +21,6 @@ public class FinanceApplicationService {
     private static final String UNCATEGORIZED = "Sin categoria";
 
     private final OrderRepository orderRepository;
-    private final ProductRepository productRepository;
     private final InventoryPurchaseRepository inventoryPurchaseRepository;
 
     public DashboardResponse getDashboard(Long userId, String periodStr) {
@@ -135,21 +132,9 @@ public class FinanceApplicationService {
         for (InventoryPurchase purchase : purchases) {
             categoryExpenses.merge(
                     categoryOrDefault(purchase.getCategory()),
-                    purchase.getTotalCost(),
+                    safeAmount(purchase.getTotalCost()),
                     BigDecimal::add
             );
-        }
-
-        Set<Long> productIdsWithPurchases = inventoryPurchaseRepository.findProductIdsWithPurchases(userId);
-        List<Product> products = productRepository.findByUserId(userId);
-        for (Product product : products) {
-            if (hasPurchaseRecord(productIdsWithPurchases, product)) {
-                continue;
-            }
-            if (isWithinPeriod(product.getCreatedAt(), start, end)) {
-                BigDecimal expense = safeMultiply(product.getUnitCost(), product.getStockLevel());
-                categoryExpenses.merge(categoryOrDefault(product.getCategory()), expense, BigDecimal::add);
-            }
         }
 
         BigDecimal totalExpenses = categoryExpenses.values().stream()
@@ -169,18 +154,10 @@ public class FinanceApplicationService {
     }
 
     private BigDecimal calculateExpenses(Long userId, LocalDateTime start, LocalDateTime end) {
-        BigDecimal purchaseExpenses = inventoryPurchaseRepository.findByUserIdAndPurchasedAtBetween(userId, start, end).stream()
+        return inventoryPurchaseRepository.findByUserIdAndPurchasedAtBetween(userId, start, end).stream()
                 .map(InventoryPurchase::getTotalCost)
+                .map(this::safeAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        Set<Long> productIdsWithPurchases = inventoryPurchaseRepository.findProductIdsWithPurchases(userId);
-        BigDecimal legacyExpenses = productRepository.findByUserId(userId).stream()
-                .filter(product -> !hasPurchaseRecord(productIdsWithPurchases, product))
-                .filter(product -> isWithinPeriod(product.getCreatedAt(), start, end))
-                .map(product -> safeMultiply(product.getUnitCost(), product.getStockLevel()))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        return purchaseExpenses.add(legacyExpenses);
     }
 
     private FinancialMetricsResponse toMetricsResponse(FinancialMetrics metrics) {
@@ -214,21 +191,8 @@ public class FinanceApplicationService {
         return order.getStatus() == Order.OrderStatus.ENTREGADA;
     }
 
-    private boolean hasPurchaseRecord(Set<Long> productIdsWithPurchases, Product product) {
-        return product.getId() != null
-                && product.getId().value() != null
-                && productIdsWithPurchases.contains(product.getId().value());
-    }
-
-    private boolean isWithinPeriod(LocalDateTime date, LocalDateTime start, LocalDateTime end) {
-        return date != null && !date.isBefore(start) && date.isBefore(end);
-    }
-
-    private BigDecimal safeMultiply(BigDecimal unitCost, BigDecimal quantity) {
-        if (unitCost == null || quantity == null) {
-            return BigDecimal.ZERO;
-        }
-        return unitCost.multiply(quantity);
+    private BigDecimal safeAmount(BigDecimal amount) {
+        return amount != null ? amount : BigDecimal.ZERO;
     }
 
     private String categoryOrDefault(String category) {
