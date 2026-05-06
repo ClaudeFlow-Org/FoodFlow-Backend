@@ -29,7 +29,7 @@ public class OrderJpaEntity {
     private BigDecimal totalAmount;
 
     @Column(name = "status", length = 20)
-    private String status = Order.OrderStatus.PENDIENTE.name();
+    private String status = Order.OrderStatus.PENDIENTE.toStorage();
 
     @Column(name = "order_number", length = 20)
     private String orderNumber;
@@ -114,7 +114,7 @@ public class OrderJpaEntity {
         private String tableIdentifier;
         private LocalDateTime orderDate;
         private BigDecimal totalAmount;
-        private String status = Order.OrderStatus.PENDIENTE.name();
+        private String status = Order.OrderStatus.PENDIENTE.toStorage();
         private String orderNumber;
         private List<OrderLineItemJpaEntity> lineItems = new ArrayList<>();
 

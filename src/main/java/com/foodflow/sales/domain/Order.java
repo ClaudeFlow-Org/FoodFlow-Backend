@@ -23,6 +23,14 @@ public class Order {
         ENTREGADA,
         CANCELADA;
 
+        public String toStorage() {
+            return switch (this) {
+                case PENDIENTE -> "PENDING";
+                case ENTREGADA -> "DELIVERED";
+                case CANCELADA -> "CANCELLED";
+            };
+        }
+
         public static OrderStatus fromStorage(String value) {
             if (value == null || value.isBlank()) {
                 return PENDIENTE;

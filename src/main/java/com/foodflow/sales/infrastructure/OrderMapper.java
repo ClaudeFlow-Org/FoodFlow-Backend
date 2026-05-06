@@ -33,7 +33,7 @@ public class OrderMapper {
                 .tableIdentifier(domain.getTableIdentifier())
                 .orderDate(domain.getOrderDate())
                 .totalAmount(domain.getTotalAmount())
-                .status((domain.getStatus() != null ? domain.getStatus() : Order.OrderStatus.PENDIENTE).name())
+                .status((domain.getStatus() != null ? domain.getStatus() : Order.OrderStatus.PENDIENTE).toStorage())
                 .orderNumber(domain.getOrderNumber());
 
         if (domain.getId().value() != null) {

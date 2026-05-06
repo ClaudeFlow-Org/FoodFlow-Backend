@@ -10,6 +10,7 @@ import com.foodflow.sales.domain.OrderRepository;
 import com.foodflow.sales.domain.OrderSequence;
 import com.foodflow.sales.domain.OrderSequenceRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -18,6 +19,7 @@ import java.util.stream.Collectors;
 
 @org.springframework.stereotype.Service
 @RequiredArgsConstructor
+@Transactional
 public class SalesApplicationService {
 
     private final OrderRepository orderRepository;

@@ -9,6 +9,8 @@ public interface InventoryPurchaseRepository {
 
     List<InventoryPurchase> findByUserIdAndPurchasedAtBetween(Long userId, LocalDateTime startDate, LocalDateTime endDate);
 
+    boolean existsByUserIdAndProductId(Long userId, Long productId);
+
     void renameCategory(Long userId, String previousName, String newName);
 
     void clearCategory(Long userId, String categoryName);
