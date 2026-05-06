@@ -10,6 +10,8 @@ import com.foodflow.common.domain.DuplicateResourceException;
 import com.foodflow.common.domain.NotFoundException;
 import com.foodflow.common.domain.ValidationException;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -21,6 +23,7 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class InventoryApplicationService {
 
+    private static final Logger log = LoggerFactory.getLogger(InventoryApplicationService.class);
     private static final String UNCATEGORIZED = "Sin categoria";
 
     private final ProductRepository productRepository;
@@ -53,7 +56,9 @@ public class InventoryApplicationService {
                 .build();
 
         Product savedProduct = productRepository.save(product);
-        recordInventoryPurchase(savedProduct, savedProduct.getStockLevel());
+        syncPurchaseHistory("recording initial product purchase", () ->
+                recordInventoryPurchase(savedProduct, savedProduct.getStockLevel())
+        );
 
         return toResponse(savedProduct);
     }
@@ -92,9 +97,9 @@ public class InventoryApplicationService {
         validateProductRequest(request);
 
         BigDecimal previousStockLevel = product.getStockLevel();
-        boolean hasPurchaseHistory = inventoryPurchaseRepository.existsByUserIdAndProductId(userId, productId);
         String previousCategory = product.getCategory();
-        String category = request.getCategory() != null ? normalizeCategory(request.getCategory()) : product.getCategory();
+        boolean categoryProvided = request.getCategory() != null;
+        String category = categoryProvided ? normalizeCategory(request.getCategory()) : product.getCategory();
         ensureCategoryExists(userId, category);
 
         product.updateDetails(
@@ -107,20 +112,12 @@ public class InventoryApplicationService {
                 request.getLowStockThreshold(),
                 request.getUnitOfMeasure()
         );
+        if (categoryProvided) {
+            product.setCategory(category);
+        }
 
         Product updatedProduct = productRepository.save(product);
-        if (hasPurchaseHistory) {
-            if (!categoryOrDefault(previousCategory).equalsIgnoreCase(categoryOrDefault(updatedProduct.getCategory()))) {
-                inventoryPurchaseRepository.updateProductCategory(
-                        userId,
-                        productId,
-                        categoryOrDefault(updatedProduct.getCategory())
-                );
-            }
-            recordStockIncrease(updatedProduct, previousStockLevel, request.getStockLevel());
-        } else {
-            recordInventoryPurchase(updatedProduct, updatedProduct.getStockLevel());
-        }
+        syncProductPurchaseHistory(userId, productId, updatedProduct, previousStockLevel, previousCategory, request.getStockLevel());
 
         return toResponse(updatedProduct);
     }
@@ -185,7 +182,9 @@ public class InventoryApplicationService {
 
         if (!previousName.equalsIgnoreCase(newName)) {
             renameProductsCategory(userId, previousName, newName);
-            inventoryPurchaseRepository.renameCategory(userId, previousName, newName);
+            syncPurchaseHistory("renaming purchase categories", () ->
+                    inventoryPurchaseRepository.renameCategory(userId, previousName, newName)
+            );
         }
 
         return toCategoryResponse(savedCategory);
@@ -200,7 +199,9 @@ public class InventoryApplicationService {
         }
 
         clearProductsCategory(userId, category.getName());
-        inventoryPurchaseRepository.clearCategory(userId, category.getName());
+        syncPurchaseHistory("clearing purchase categories", () ->
+                inventoryPurchaseRepository.clearCategory(userId, category.getName())
+        );
         inventoryCategoryRepository.delete(InventoryCategory.InventoryCategoryId.of(categoryId));
     }
 
@@ -264,6 +265,34 @@ public class InventoryApplicationService {
                 .build();
 
         inventoryPurchaseRepository.save(purchase);
+    }
+
+    private void syncProductPurchaseHistory(Long userId, Long productId, Product updatedProduct,
+                                            BigDecimal previousStockLevel, String previousCategory,
+                                            BigDecimal requestedStockLevel) {
+        syncPurchaseHistory("syncing product purchase history", () -> {
+            boolean hasPurchaseHistory = inventoryPurchaseRepository.existsByUserIdAndProductId(userId, productId);
+            if (hasPurchaseHistory) {
+                if (!categoryOrDefault(previousCategory).equalsIgnoreCase(categoryOrDefault(updatedProduct.getCategory()))) {
+                    inventoryPurchaseRepository.updateProductCategory(
+                            userId,
+                            productId,
+                            categoryOrDefault(updatedProduct.getCategory())
+                    );
+                }
+                recordStockIncrease(updatedProduct, previousStockLevel, requestedStockLevel);
+            } else {
+                recordInventoryPurchase(updatedProduct, updatedProduct.getStockLevel());
+            }
+        });
+    }
+
+    private void syncPurchaseHistory(String action, Runnable operation) {
+        try {
+            operation.run();
+        } catch (RuntimeException ex) {
+            log.warn("Skipping {} after product data was saved: {}", action, ex.getMessage());
+        }
     }
 
     private void ensureCategoryExists(Long userId, String categoryName) {
