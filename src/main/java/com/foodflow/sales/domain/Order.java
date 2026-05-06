@@ -37,10 +37,10 @@ public class Order {
             }
 
             return switch (value.trim().toUpperCase()) {
-                case "PENDIENTE", "PENDING", "PREPARING", "READY" -> PENDIENTE;
-                case "ENTREGADA", "DELIVERED" -> ENTREGADA;
+                case "PENDIENTE", "PENDING", "PREPARING", "READY", "NEW", "OPEN", "IN_PROGRESS", "PROCESSING" -> PENDIENTE;
+                case "ENTREGADA", "DELIVERED", "DONE", "COMPLETED", "SERVED", "PAID", "CLOSED" -> ENTREGADA;
                 case "CANCELADA", "CANCELLED" -> CANCELADA;
-                default -> throw new ValidationException("Invalid order status: " + value);
+                default -> PENDIENTE;
             };
         }
     }
