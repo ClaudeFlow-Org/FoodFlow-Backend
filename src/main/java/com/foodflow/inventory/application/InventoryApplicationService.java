@@ -38,7 +38,7 @@ public class InventoryApplicationService {
         validateProductRequest(request);
 
         String category = normalizeCategory(request.getCategory());
-        ensureCategoryExists(userId, category);
+        runOptionalSync("ensuring product category", () -> ensureCategoryExists(userId, category));
 
         Product product = Product.builder()
                 .id(Product.ProductId.empty())
@@ -56,7 +56,7 @@ public class InventoryApplicationService {
                 .build();
 
         Product savedProduct = productRepository.save(product);
-        syncPurchaseHistory("recording initial product purchase", () ->
+        runOptionalSync("recording initial product purchase", () ->
                 recordInventoryPurchase(savedProduct, savedProduct.getStockLevel())
         );
 
@@ -100,7 +100,7 @@ public class InventoryApplicationService {
         String previousCategory = product.getCategory();
         boolean categoryProvided = request.getCategory() != null;
         String category = categoryProvided ? normalizeCategory(request.getCategory()) : product.getCategory();
-        ensureCategoryExists(userId, category);
+        runOptionalSync("ensuring product category", () -> ensureCategoryExists(userId, category));
 
         product.updateDetails(
                 request.getName(),
@@ -182,7 +182,7 @@ public class InventoryApplicationService {
 
         if (!previousName.equalsIgnoreCase(newName)) {
             renameProductsCategory(userId, previousName, newName);
-            syncPurchaseHistory("renaming purchase categories", () ->
+            runOptionalSync("renaming purchase categories", () ->
                     inventoryPurchaseRepository.renameCategory(userId, previousName, newName)
             );
         }
@@ -199,7 +199,7 @@ public class InventoryApplicationService {
         }
 
         clearProductsCategory(userId, category.getName());
-        syncPurchaseHistory("clearing purchase categories", () ->
+        runOptionalSync("clearing purchase categories", () ->
                 inventoryPurchaseRepository.clearCategory(userId, category.getName())
         );
         inventoryCategoryRepository.delete(InventoryCategory.InventoryCategoryId.of(categoryId));
@@ -270,7 +270,7 @@ public class InventoryApplicationService {
     private void syncProductPurchaseHistory(Long userId, Long productId, Product updatedProduct,
                                             BigDecimal previousStockLevel, String previousCategory,
                                             BigDecimal requestedStockLevel) {
-        syncPurchaseHistory("syncing product purchase history", () -> {
+        runOptionalSync("syncing product purchase history", () -> {
             boolean hasPurchaseHistory = inventoryPurchaseRepository.existsByUserIdAndProductId(userId, productId);
             if (hasPurchaseHistory) {
                 if (!categoryOrDefault(previousCategory).equalsIgnoreCase(categoryOrDefault(updatedProduct.getCategory()))) {
@@ -287,11 +287,11 @@ public class InventoryApplicationService {
         });
     }
 
-    private void syncPurchaseHistory(String action, Runnable operation) {
+    private void runOptionalSync(String action, Runnable operation) {
         try {
             operation.run();
         } catch (RuntimeException ex) {
-            log.warn("Skipping {} after product data was saved: {}", action, ex.getMessage());
+            log.warn("Skipping optional inventory sync while {}: {}", action, ex.getMessage());
         }
     }
 

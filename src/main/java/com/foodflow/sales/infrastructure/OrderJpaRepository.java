@@ -12,14 +12,20 @@ import java.util.Optional;
 @Repository
 public interface OrderJpaRepository extends JpaRepository<OrderJpaEntity, Long> {
 
-    @Query("SELECT o FROM OrderJpaEntity o LEFT JOIN FETCH o.lineItems WHERE o.userId = :userId ORDER BY o.orderDate DESC")
+    @Query("SELECT DISTINCT o FROM OrderJpaEntity o LEFT JOIN FETCH o.lineItems WHERE o.userId = :userId ORDER BY o.orderDate DESC")
+    List<OrderJpaEntity> findByUserIdWithLineItemsOrderByOrderDateDesc(Long userId);
+
     List<OrderJpaEntity> findByUserIdOrderByOrderDateDesc(Long userId);
 
-    @Query("SELECT o FROM OrderJpaEntity o LEFT JOIN FETCH o.lineItems WHERE o.userId = :userId AND o.orderDate >= :startDate AND o.orderDate < :endDate")
-    List<OrderJpaEntity> findByUserIdAndDateBetween(@Param("userId") Long userId,
-                                                     @Param("startDate") LocalDateTime startDate,
-                                                     @Param("endDate") LocalDateTime endDate);
+    @Query("SELECT DISTINCT o FROM OrderJpaEntity o LEFT JOIN FETCH o.lineItems WHERE o.userId = :userId AND o.orderDate >= :startDate AND o.orderDate < :endDate")
+    List<OrderJpaEntity> findByUserIdAndDateBetweenWithLineItems(@Param("userId") Long userId,
+                                                                 @Param("startDate") LocalDateTime startDate,
+                                                                 @Param("endDate") LocalDateTime endDate);
 
-    @Query("SELECT o FROM OrderJpaEntity o LEFT JOIN FETCH o.lineItems WHERE o.id = :id")
+    List<OrderJpaEntity> findByUserIdAndOrderDateGreaterThanEqualAndOrderDateBefore(Long userId,
+                                                                                    LocalDateTime startDate,
+                                                                                    LocalDateTime endDate);
+
+    @Query("SELECT DISTINCT o FROM OrderJpaEntity o LEFT JOIN FETCH o.lineItems WHERE o.id = :id")
     Optional<OrderJpaEntity> findByIdWithLineItems(@Param("id") Long id);
 }

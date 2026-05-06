@@ -8,6 +8,8 @@ import com.foodflow.sales.domain.Order;
 import com.foodflow.sales.domain.OrderLineItem;
 import com.foodflow.sales.domain.OrderRepository;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -18,6 +20,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class FinanceApplicationService {
 
+    private static final Logger log = LoggerFactory.getLogger(FinanceApplicationService.class);
     private static final String UNCATEGORIZED = "Sin categoria";
 
     private final OrderRepository orderRepository;
@@ -35,7 +38,7 @@ public class FinanceApplicationService {
         FinancialMetrics previousMetrics = calculateMetrics(userId, previousStart, previousEnd);
         currentMetrics.calculateVariations(previousMetrics);
 
-        List<Order> ordersInPeriod = orderRepository.findByUserIdAndDateBetween(userId, start, end);
+        List<Order> ordersInPeriod = findOrdersInPeriod(userId, start, end);
         List<TopDish> topDishes = getTopDishesFromOrders(ordersInPeriod, 5);
 
         return DashboardResponse.builder()
@@ -67,7 +70,7 @@ public class FinanceApplicationService {
 
         currentMetrics.calculateVariations(previousMetrics);
 
-        List<Order> ordersInPeriod = orderRepository.findByUserIdAndDateBetween(userId, start, end);
+        List<Order> ordersInPeriod = findOrdersInPeriod(userId, start, end);
         List<TopDish> topDishes = getTopDishesFromOrders(ordersInPeriod, 10);
         List<ExpenseCategory> expenseBreakdown = calculateExpenseBreakdown(userId, start, end);
         Long orderCount = (long) ordersInPeriod.size();
@@ -84,7 +87,7 @@ public class FinanceApplicationService {
     }
 
     private FinancialMetrics calculateMetrics(Long userId, LocalDateTime start, LocalDateTime end) {
-        List<Order> orders = orderRepository.findByUserIdAndDateBetween(userId, start, end);
+        List<Order> orders = findOrdersInPeriod(userId, start, end);
 
         BigDecimal totalIncome = orders.stream()
                 .filter(this::isDelivered)
@@ -128,7 +131,7 @@ public class FinanceApplicationService {
     private List<ExpenseCategory> calculateExpenseBreakdown(Long userId, LocalDateTime start, LocalDateTime end) {
         Map<String, BigDecimal> categoryExpenses = new LinkedHashMap<>();
 
-        List<InventoryPurchase> purchases = inventoryPurchaseRepository.findByUserIdAndPurchasedAtBetween(userId, start, end);
+        List<InventoryPurchase> purchases = findPurchasesInPeriod(userId, start, end);
         for (InventoryPurchase purchase : purchases) {
             categoryExpenses.merge(
                     categoryOrDefault(purchase.getCategory()),
@@ -154,10 +157,28 @@ public class FinanceApplicationService {
     }
 
     private BigDecimal calculateExpenses(Long userId, LocalDateTime start, LocalDateTime end) {
-        return inventoryPurchaseRepository.findByUserIdAndPurchasedAtBetween(userId, start, end).stream()
+        return findPurchasesInPeriod(userId, start, end).stream()
                 .map(InventoryPurchase::getTotalCost)
                 .map(this::safeAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private List<Order> findOrdersInPeriod(Long userId, LocalDateTime start, LocalDateTime end) {
+        try {
+            return orderRepository.findByUserIdAndDateBetween(userId, start, end);
+        } catch (RuntimeException ex) {
+            log.warn("Skipping order metrics for user {} after order query failed: {}", userId, ex.getMessage());
+            return List.of();
+        }
+    }
+
+    private List<InventoryPurchase> findPurchasesInPeriod(Long userId, LocalDateTime start, LocalDateTime end) {
+        try {
+            return inventoryPurchaseRepository.findByUserIdAndPurchasedAtBetween(userId, start, end);
+        } catch (RuntimeException ex) {
+            log.warn("Skipping expense metrics for user {} after purchase query failed: {}", userId, ex.getMessage());
+            return List.of();
+        }
     }
 
     private FinancialMetricsResponse toMetricsResponse(FinancialMetrics metrics) {
