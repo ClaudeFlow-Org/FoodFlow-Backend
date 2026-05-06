@@ -66,6 +66,17 @@ public class ProductController {
         return ApiResponse.success("Product updated successfully", response);
     }
 
+    @PutMapping("/{id}/category")
+    @Operation(summary = "Update product category", description = "Assign or clear a product category without touching legacy product category storage")
+    public ApiResponse<ProductResponse> updateProductCategory(
+            @AuthenticationPrincipal UserAuthentication userAuth,
+            @Parameter(description = "Product ID", required = true)
+            @PathVariable Long id,
+            @RequestBody InventoryCategoryRequest request) {
+        ProductResponse response = inventoryApplicationService.updateProductCategory(userAuth.getUserId(), id, request);
+        return ApiResponse.success("Product category updated successfully", response);
+    }
+
     @DeleteMapping("/{id}")
     @Operation(summary = "Delete a product", description = "Remove a product from inventory")
     public ApiResponse<Void> deleteProduct(

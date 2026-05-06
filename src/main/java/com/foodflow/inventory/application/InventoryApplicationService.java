@@ -136,6 +136,31 @@ public class InventoryApplicationService {
         return toResponse(updatedProduct, displayCategory);
     }
 
+    public ProductResponse updateProductCategory(Long userId, Long productId, InventoryCategoryRequest request) {
+        Product product = productRepository.findById(Product.ProductId.of(productId))
+                .orElseThrow(() -> new NotFoundException("Product", "id " + productId));
+
+        if (!product.getUserId().equals(userId)) {
+            throw new ValidationException("You do not have access to this product");
+        }
+
+        String displayCategory = request != null ? normalizeCategory(request.getName()) : null;
+        runOptionalSync("ensuring product category", () -> ensureCategoryExists(userId, displayCategory));
+
+        product.setCategory(toProductStorageCategory(displayCategory));
+        product.setUpdatedAt(LocalDateTime.now());
+        Product updatedProduct = productRepository.save(product);
+
+        runOptionalSync("syncing product category assignment", () ->
+                syncProductCategoryAssignment(userId, productId, displayCategory)
+        );
+        runOptionalSync("syncing purchase category assignment", () ->
+                inventoryPurchaseRepository.updateProductCategory(userId, productId, categoryOrDefault(displayCategory))
+        );
+
+        return toResponse(updatedProduct, displayCategory);
+    }
+
     public void deleteProduct(Long userId, Long productId) {
         Product product = productRepository.findById(Product.ProductId.of(productId))
                 .orElseThrow(() -> new NotFoundException("Product", "id " + productId));
