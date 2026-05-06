@@ -22,6 +22,13 @@ public interface InventoryPurchaseJpaRepository extends JpaRepository<InventoryP
 
     @Modifying
     @Transactional
+    @Query("UPDATE InventoryPurchaseJpaEntity p SET p.category = :categoryName WHERE p.userId = :userId AND p.productId = :productId")
+    void updateProductCategory(@Param("userId") Long userId,
+                               @Param("productId") Long productId,
+                               @Param("categoryName") String categoryName);
+
+    @Modifying
+    @Transactional
     @Query("UPDATE InventoryPurchaseJpaEntity p SET p.category = :newName WHERE p.userId = :userId AND LOWER(p.category) = LOWER(:previousName)")
     void renameCategory(@Param("userId") Long userId,
                         @Param("previousName") String previousName,
