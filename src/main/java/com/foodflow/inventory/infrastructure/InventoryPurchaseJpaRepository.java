@@ -18,6 +18,8 @@ public interface InventoryPurchaseJpaRepository extends JpaRepository<InventoryP
                                                                         @Param("startDate") LocalDateTime startDate,
                                                                         @Param("endDate") LocalDateTime endDate);
 
+    boolean existsByUserIdAndProductId(Long userId, Long productId);
+
     @Modifying
     @Transactional
     @Query("UPDATE InventoryPurchaseJpaEntity p SET p.category = :newName WHERE p.userId = :userId AND LOWER(p.category) = LOWER(:previousName)")

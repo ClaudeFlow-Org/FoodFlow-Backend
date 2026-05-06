@@ -92,6 +92,7 @@ public class InventoryApplicationService {
         validateProductRequest(request);
 
         BigDecimal previousStockLevel = product.getStockLevel();
+        boolean hasPurchaseHistory = inventoryPurchaseRepository.existsByUserIdAndProductId(userId, productId);
         String category = request.getCategory() != null ? normalizeCategory(request.getCategory()) : product.getCategory();
         ensureCategoryExists(userId, category);
 
@@ -107,7 +108,11 @@ public class InventoryApplicationService {
         );
 
         Product updatedProduct = productRepository.save(product);
-        recordStockIncrease(updatedProduct, previousStockLevel, request.getStockLevel());
+        if (hasPurchaseHistory) {
+            recordStockIncrease(updatedProduct, previousStockLevel, request.getStockLevel());
+        } else {
+            recordInventoryPurchase(updatedProduct, updatedProduct.getStockLevel());
+        }
 
         return toResponse(updatedProduct);
     }

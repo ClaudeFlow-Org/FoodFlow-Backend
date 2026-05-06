@@ -28,6 +28,11 @@ public class InventoryPurchaseRepositoryImpl implements InventoryPurchaseReposit
     }
 
     @Override
+    public boolean existsByUserIdAndProductId(Long userId, Long productId) {
+        return jpaRepository.existsByUserIdAndProductId(userId, productId);
+    }
+
+    @Override
     public void renameCategory(Long userId, String previousName, String newName) {
         jpaRepository.renameCategory(userId, previousName, newName);
     }
