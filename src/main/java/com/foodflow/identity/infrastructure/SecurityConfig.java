@@ -54,6 +54,7 @@ public class SecurityConfig {
         // Allow local development and production Vercel domains
         configuration.setAllowedOriginPatterns(List.of(
             "http://localhost:*",
+            "http://127.0.0.1:*",
             "https://*.vercel.app",
             "https://vercel.app"
         ));

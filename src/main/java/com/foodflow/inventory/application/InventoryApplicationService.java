@@ -7,6 +7,7 @@ import com.foodflow.inventory.domain.InventoryPurchaseRepository;
 import com.foodflow.inventory.domain.Product;
 import com.foodflow.inventory.domain.ProductRepository;
 import com.foodflow.common.domain.DuplicateResourceException;
+import com.foodflow.common.domain.MeasurementUnitConverter;
 import com.foodflow.common.domain.NotFoundException;
 import com.foodflow.common.domain.ValidationException;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +15,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -161,6 +163,50 @@ public class InventoryApplicationService {
         return toResponse(updatedProduct, displayCategory);
     }
 
+    public ProductResponse registerProductPurchase(Long userId, Long productId, InventoryPurchaseRequest request) {
+        Product product = productRepository.findById(Product.ProductId.of(productId))
+                .orElseThrow(() -> new NotFoundException("Product", "id " + productId));
+
+        if (!product.getUserId().equals(userId)) {
+            throw new ValidationException("You do not have access to this product");
+        }
+
+        validateInventoryPurchaseRequest(request);
+
+        String purchaseUnit = request.getUnitOfMeasure() != null && !request.getUnitOfMeasure().isBlank()
+                ? request.getUnitOfMeasure()
+                : product.getUnitOfMeasure();
+        BigDecimal purchasedQuantity = convertPurchaseQuantityToProductUnit(
+                request.getQuantity(),
+                purchaseUnit,
+                product.getUnitOfMeasure()
+        );
+        BigDecimal totalCost = request.getTotalCost();
+        BigDecimal purchaseUnitCost = totalCost
+                .divide(purchasedQuantity, 6, RoundingMode.HALF_UP)
+                .stripTrailingZeros();
+
+        BigDecimal currentStock = product.getStockLevel() != null ? product.getStockLevel() : BigDecimal.ZERO;
+        BigDecimal currentUnitCost = product.getUnitCost() != null ? product.getUnitCost() : BigDecimal.ZERO;
+        BigDecimal newStockLevel = currentStock.add(purchasedQuantity).stripTrailingZeros();
+        BigDecimal newUnitCost = currentStock.compareTo(BigDecimal.ZERO) > 0
+                ? currentStock.multiply(currentUnitCost)
+                        .add(totalCost)
+                        .divide(newStockLevel, 6, RoundingMode.HALF_UP)
+                        .stripTrailingZeros()
+                : purchaseUnitCost;
+
+        product.setStockLevel(newStockLevel);
+        product.setUnitCost(newUnitCost);
+        product.setUpdatedAt(LocalDateTime.now());
+
+        Product updatedProduct = productRepository.save(product);
+        String displayCategory = displayCategoryForProduct(userId, updatedProduct);
+        recordInventoryPurchase(updatedProduct, purchasedQuantity, displayCategory, purchaseUnitCost, totalCost);
+
+        return toResponse(updatedProduct, displayCategory);
+    }
+
     public void deleteProduct(Long userId, Long productId) {
         Product product = productRepository.findById(Product.ProductId.of(productId))
                 .orElseThrow(() -> new NotFoundException("Product", "id " + productId));
@@ -269,6 +315,29 @@ public class InventoryApplicationService {
         }
     }
 
+    private void validateInventoryPurchaseRequest(InventoryPurchaseRequest request) {
+        if (request == null) {
+            throw new ValidationException("purchase", "Purchase information is required");
+        }
+        if (request.getQuantity() == null || request.getQuantity().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException("quantity", "Quantity must be greater than 0");
+        }
+        if (request.getTotalCost() == null || request.getTotalCost().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException("totalCost", "Total cost must be greater than 0");
+        }
+    }
+
+    private BigDecimal convertPurchaseQuantityToProductUnit(BigDecimal quantity, String purchaseUnit, String productUnit) {
+        try {
+            return MeasurementUnitConverter.convert(quantity, purchaseUnit, productUnit);
+        } catch (IllegalArgumentException exception) {
+            throw new ValidationException(
+                    "unitOfMeasure",
+                    "Purchase unit " + purchaseUnit + " is not compatible with product unit " + productUnit
+            );
+        }
+    }
+
     private ProductResponse toResponse(Product product) {
         return toResponse(product, null);
     }
@@ -305,6 +374,17 @@ public class InventoryApplicationService {
         }
 
         BigDecimal unitCost = product.getUnitCost() != null ? product.getUnitCost() : BigDecimal.ZERO;
+        recordInventoryPurchase(product, quantityPurchased, displayCategory, unitCost, unitCost.multiply(quantityPurchased));
+    }
+
+    private void recordInventoryPurchase(Product product, BigDecimal quantityPurchased, String displayCategory,
+                                         BigDecimal unitCost, BigDecimal totalCost) {
+        if (quantityPurchased == null || quantityPurchased.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+
+        BigDecimal safeUnitCost = unitCost != null ? unitCost : BigDecimal.ZERO;
+        BigDecimal safeTotalCost = totalCost != null ? totalCost : safeUnitCost.multiply(quantityPurchased);
         InventoryPurchase purchase = InventoryPurchase.builder()
                 .id(InventoryPurchase.InventoryPurchaseId.empty())
                 .userId(product.getUserId())
@@ -312,8 +392,8 @@ public class InventoryApplicationService {
                 .productName(product.getName())
                 .category(categoryOrDefault(displayCategory != null ? displayCategory : product.getCategory()))
                 .quantity(quantityPurchased)
-                .unitCost(unitCost)
-                .totalCost(unitCost.multiply(quantityPurchased))
+                .unitCost(safeUnitCost)
+                .totalCost(safeTotalCost)
                 .purchasedAt(LocalDateTime.now())
                 .build();
 
@@ -495,7 +575,7 @@ public class InventoryApplicationService {
     }
 
     private String toProductStorageCategory(String categoryName) {
-        return null;
+        return normalizeCategory(categoryName);
     }
 
     private void ensureCategoryExists(Long userId, String categoryName) {

@@ -5,6 +5,7 @@ import com.foodflow.identity.infrastructure.UserAuthentication;
 import com.foodflow.inventory.application.InventoryCategoryRequest;
 import com.foodflow.inventory.application.InventoryCategoryResponse;
 import com.foodflow.inventory.application.InventoryApplicationService;
+import com.foodflow.inventory.application.InventoryPurchaseRequest;
 import com.foodflow.inventory.application.ProductRequest;
 import com.foodflow.inventory.application.ProductResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -75,6 +76,17 @@ public class ProductController {
             @RequestBody InventoryCategoryRequest request) {
         ProductResponse response = inventoryApplicationService.updateProductCategory(userAuth.getUserId(), id, request);
         return ApiResponse.success("Product category updated successfully", response);
+    }
+
+    @PostMapping("/{id}/purchases")
+    @Operation(summary = "Register product purchase", description = "Add purchased stock to a product and update its weighted average unit cost")
+    public ApiResponse<ProductResponse> registerProductPurchase(
+            @AuthenticationPrincipal UserAuthentication userAuth,
+            @Parameter(description = "Product ID", required = true)
+            @PathVariable Long id,
+            @Valid @RequestBody InventoryPurchaseRequest request) {
+        ProductResponse response = inventoryApplicationService.registerProductPurchase(userAuth.getUserId(), id, request);
+        return ApiResponse.success("Product purchase registered successfully", response);
     }
 
     @DeleteMapping("/{id}")

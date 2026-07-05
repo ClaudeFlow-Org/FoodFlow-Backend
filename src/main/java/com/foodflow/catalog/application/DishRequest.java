@@ -1,10 +1,12 @@
 package com.foodflow.catalog.application;
 
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 public class DishRequest {
 
@@ -20,6 +22,9 @@ public class DishRequest {
 
     @Size(max = 500, message = "Ingredients must not exceed 500 characters")
     private String ingredients;
+
+    @Valid
+    private List<DishRecipeItemRequest> recipeItems;
 
     public DishRequest() {
     }
@@ -60,11 +65,20 @@ public class DishRequest {
         this.ingredients = ingredients;
     }
 
+    public List<DishRecipeItemRequest> getRecipeItems() {
+        return recipeItems;
+    }
+
+    public void setRecipeItems(List<DishRecipeItemRequest> recipeItems) {
+        this.recipeItems = recipeItems;
+    }
+
     public static class Builder {
         private String name;
         private String description;
         private BigDecimal price;
         private String ingredients;
+        private List<DishRecipeItemRequest> recipeItems;
 
         public Builder name(String name) {
             this.name = name;
@@ -86,12 +100,18 @@ public class DishRequest {
             return this;
         }
 
+        public Builder recipeItems(List<DishRecipeItemRequest> recipeItems) {
+            this.recipeItems = recipeItems;
+            return this;
+        }
+
         public DishRequest build() {
             DishRequest request = new DishRequest();
             request.name = this.name;
             request.description = this.description;
             request.price = this.price;
             request.ingredients = this.ingredients;
+            request.recipeItems = this.recipeItems;
             return request;
         }
     }

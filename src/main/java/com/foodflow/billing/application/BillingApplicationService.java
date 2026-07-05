@@ -93,9 +93,23 @@ public class BillingApplicationService {
         }
 
         Subscription subscription = subscriptionRepository.findByUserId(userId)
-                .orElseThrow(() -> new NotFoundException("Subscription", "user id " + userId));
+                .filter(Subscription::isActive)
+                .orElseGet(() -> defaultFreeSubscription(userId));
 
         return toResponse(subscription);
+    }
+
+    private Subscription defaultFreeSubscription(Long userId) {
+        return Subscription.builder()
+                .id(Subscription.SubscriptionId.of("free-" + userId))
+                .userId(userId)
+                .plan(SubscriptionPlan.FREE)
+                .status(Subscription.SubscriptionStatus.ACTIVE)
+                .startDate(LocalDateTime.now())
+                .endDate(null)
+                .cancellationDate(null)
+                .stripeSubscriptionId(null)
+                .build();
     }
 
     private LocalDateTime calculateEndDate(SubscriptionPlan plan) {
