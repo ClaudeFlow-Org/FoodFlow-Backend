@@ -3,6 +3,7 @@ package com.foodflow.common.presentation;
 import com.foodflow.common.domain.DomainException;
 import com.foodflow.common.domain.DuplicateResourceException;
 import com.foodflow.common.domain.NotFoundException;
+import com.foodflow.common.domain.PlanLimitExceededException;
 import com.foodflow.common.domain.UnauthorizedException;
 import com.foodflow.common.domain.ValidationException;
 import org.slf4j.Logger;
@@ -22,6 +23,14 @@ import java.util.stream.Collectors;
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    @ExceptionHandler(PlanLimitExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handlePlanLimitExceededException(PlanLimitExceededException ex) {
+        log.warn("Plan limit exceeded: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
 
     @ExceptionHandler(DomainException.class)
     public ResponseEntity<ApiResponse<Void>> handleDomainException(DomainException ex) {

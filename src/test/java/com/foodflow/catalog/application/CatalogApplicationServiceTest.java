@@ -4,10 +4,14 @@ import com.foodflow.catalog.domain.Dish;
 import com.foodflow.catalog.domain.DishRepository;
 import com.foodflow.catalog.domain.DishRecipeItem;
 import com.foodflow.catalog.domain.DishRecipeItemRepository;
+import com.foodflow.billing.application.PlanLimitService;
 import com.foodflow.common.domain.DuplicateResourceException;
 import com.foodflow.common.domain.ValidationException;
 import com.foodflow.inventory.domain.Product;
 import com.foodflow.inventory.domain.ProductRepository;
+import com.foodflow.sales.domain.Order;
+import com.foodflow.sales.domain.OrderLineItem;
+import com.foodflow.sales.domain.OrderRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -37,8 +41,14 @@ class CatalogApplicationServiceTest {
     @Mock
     private ProductRepository productRepository;
 
+    @Mock
+    private OrderRepository orderRepository;
+
+    @Mock
+    private PlanLimitService planLimitService;
+
     private CatalogApplicationService service() {
-        return new CatalogApplicationService(dishRepository, dishRecipeItemRepository, productRepository);
+        return new CatalogApplicationService(dishRepository, dishRecipeItemRepository, productRepository, orderRepository, planLimitService);
     }
 
     // Prueba unitaria: crea plato y persiste usuario propietario (BE-UT-022)
@@ -186,5 +196,54 @@ class CatalogApplicationServiceTest {
         assertThat(recipeCaptor.getValue().get(0).getRequiredUnitOfMeasure()).isEqualTo("g");
         assertThat(response.getRecipeItems()).hasSize(1);
         assertThat(response.getAvailableOrders()).isEqualTo(40);
+    }
+
+    @Test
+    void subtractsPendingOrderReservationsFromAvailableOrders() {
+        CatalogApplicationService service = service();
+        Dish dish = Dish.builder()
+                .id(Dish.DishId.of(10L))
+                .name("Taco pastor")
+                .price(new BigDecimal("12.00"))
+                .userId(77L)
+                .createdAt(LocalDateTime.of(2026, 5, 9, 10, 0))
+                .build();
+        Product product = Product.builder()
+                .id(Product.ProductId.of(44L))
+                .name("Carne pastor")
+                .stockLevel(new BigDecimal("1.500"))
+                .unitCost(new BigDecimal("40.00"))
+                .unitOfMeasure("kg")
+                .userId(77L)
+                .build();
+        DishRecipeItem recipeItem = DishRecipeItem.builder()
+                .id(DishRecipeItem.DishRecipeItemId.of(1L))
+                .userId(77L)
+                .dishId(10L)
+                .productId(44L)
+                .requiredQuantity(new BigDecimal("500"))
+                .requiredUnitOfMeasure("g")
+                .build();
+        Order pendingOrder = Order.builder()
+                .id(Order.OrderId.of(7L))
+                .userId(77L)
+                .status(Order.OrderStatus.PENDIENTE)
+                .lineItems(List.of(OrderLineItem.builder()
+                        .dishId(10L)
+                        .dishName("Taco pastor")
+                        .unitPrice(new BigDecimal("12.00"))
+                        .quantity(2)
+                        .build()))
+                .build();
+
+        when(dishRepository.findByUserId(77L)).thenReturn(List.of(dish));
+        when(dishRecipeItemRepository.findByUserIdAndDishIdIn(77L, List.of(10L))).thenReturn(List.of(recipeItem));
+        when(productRepository.findByUserId(77L)).thenReturn(List.of(product));
+        when(orderRepository.findByUserId(77L)).thenReturn(List.of(pendingOrder));
+
+        List<DishResponse> responses = service.getAllDishes(77L);
+
+        assertThat(responses).hasSize(1);
+        assertThat(responses.get(0).getAvailableOrders()).isEqualTo(1);
     }
 }

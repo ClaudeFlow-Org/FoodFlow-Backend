@@ -31,17 +31,27 @@ public class InventoryApplicationService {
     private static final String UNCATEGORIZED = "Sin categoria";
     private static final String PRODUCT_CATEGORY_ASSIGNMENT_PREFIX = "__pc:";
     private static final int MAX_CATEGORY_NAME_LENGTH = 80;
+    private static final int MAX_PRODUCT_NAME_LENGTH = 100;
+    private static final int MAX_PRODUCT_DESCRIPTION_LENGTH = 500;
+    private static final int MAX_PRODUCT_SUPPLIER_LENGTH = 200;
+    private static final BigDecimal PRODUCT_STOCK_LIMIT = new BigDecimal("10000");
+    private static final BigDecimal LOW_STOCK_THRESHOLD_LIMIT = new BigDecimal("10000");
+    private static final BigDecimal MAX_PRODUCT_COST = new BigDecimal("999999");
+    private static final BigDecimal MAX_PRODUCT_UNIT_COST = new BigDecimal("999999");
 
     private final ProductRepository productRepository;
     private final InventoryPurchaseRepository inventoryPurchaseRepository;
     private final InventoryCategoryRepository inventoryCategoryRepository;
+    private final com.foodflow.billing.application.PlanLimitService planLimitService;
 
     public ProductResponse addProduct(Long userId, ProductRequest request) {
+        validateProductRequest(request);
+
         if (productRepository.existsByUserIdAndName(userId, request.getName())) {
             throw new DuplicateResourceException("Product", "name " + request.getName());
         }
 
-        validateProductRequest(request);
+        planLimitService.assertCanAddProduct(userId, productRepository.findByUserId(userId).size());
 
         String displayCategory = normalizeCategory(request.getCategory());
         runOptionalSync("ensuring product category", () -> ensureCategoryExists(userId, displayCategory));
@@ -189,12 +199,18 @@ public class InventoryApplicationService {
         BigDecimal currentStock = product.getStockLevel() != null ? product.getStockLevel() : BigDecimal.ZERO;
         BigDecimal currentUnitCost = product.getUnitCost() != null ? product.getUnitCost() : BigDecimal.ZERO;
         BigDecimal newStockLevel = currentStock.add(purchasedQuantity).stripTrailingZeros();
+        if (newStockLevel.compareTo(PRODUCT_STOCK_LIMIT) > 0) {
+            throw new ValidationException("stockLevel", "Stock level must not exceed " + PRODUCT_STOCK_LIMIT.stripTrailingZeros().toPlainString());
+        }
         BigDecimal newUnitCost = currentStock.compareTo(BigDecimal.ZERO) > 0
                 ? currentStock.multiply(currentUnitCost)
                         .add(totalCost)
                         .divide(newStockLevel, 6, RoundingMode.HALF_UP)
                         .stripTrailingZeros()
                 : purchaseUnitCost;
+        if (purchaseUnitCost.compareTo(MAX_PRODUCT_UNIT_COST) > 0 || newUnitCost.compareTo(MAX_PRODUCT_UNIT_COST) > 0) {
+            throw new ValidationException("unitCost", "Unit cost must not exceed " + MAX_PRODUCT_UNIT_COST.stripTrailingZeros().toPlainString());
+        }
 
         product.setStockLevel(newStockLevel);
         product.setUnitCost(newUnitCost);
@@ -301,17 +317,48 @@ public class InventoryApplicationService {
     }
 
     private void validateProductRequest(ProductRequest request) {
+        if (request == null) {
+            throw new ValidationException("product", "Product information is required");
+        }
         if (request.getName() == null || request.getName().isBlank()) {
             throw new ValidationException("name", "Name cannot be empty");
+        }
+        if (request.getName().trim().length() > MAX_PRODUCT_NAME_LENGTH) {
+            throw new ValidationException("name", "Name must not exceed " + MAX_PRODUCT_NAME_LENGTH + " characters");
+        }
+        if (request.getDescription() != null && request.getDescription().trim().length() > MAX_PRODUCT_DESCRIPTION_LENGTH) {
+            throw new ValidationException("description", "Description must not exceed " + MAX_PRODUCT_DESCRIPTION_LENGTH + " characters");
+        }
+        if (request.getSupplier() != null && request.getSupplier().trim().length() > MAX_PRODUCT_SUPPLIER_LENGTH) {
+            throw new ValidationException("supplier", "Supplier must not exceed " + MAX_PRODUCT_SUPPLIER_LENGTH + " characters");
+        }
+        String normalizedCategory = normalizeCategory(request.getCategory());
+        if (normalizedCategory != null && normalizedCategory.length() > MAX_CATEGORY_NAME_LENGTH) {
+            throw new ValidationException("category", "Category must not exceed " + MAX_CATEGORY_NAME_LENGTH + " characters");
         }
         if (request.getStockLevel() == null || request.getStockLevel().compareTo(BigDecimal.ZERO) < 0) {
             throw new ValidationException("stockLevel", "Stock level must be non-negative");
         }
+        if (request.getStockLevel().compareTo(PRODUCT_STOCK_LIMIT) > 0) {
+            throw new ValidationException("stockLevel", "Stock level must not exceed " + PRODUCT_STOCK_LIMIT.stripTrailingZeros().toPlainString());
+        }
         if (request.getUnitCost() == null || request.getUnitCost().compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException("unitCost", "Unit cost must be greater than 0");
         }
+        if (request.getUnitCost().compareTo(MAX_PRODUCT_UNIT_COST) > 0) {
+            throw new ValidationException("unitCost", "Unit cost must not exceed " + MAX_PRODUCT_UNIT_COST.stripTrailingZeros().toPlainString());
+        }
         if (request.getUnitOfMeasure() == null || request.getUnitOfMeasure().isBlank()) {
             throw new ValidationException("unitOfMeasure", "Unit of measure cannot be empty");
+        }
+        if (request.getUnitOfMeasure().trim().length() > 20) {
+            throw new ValidationException("unitOfMeasure", "Unit of measure must not exceed 20 characters");
+        }
+        if (request.getLowStockThreshold() != null && request.getLowStockThreshold().compareTo(BigDecimal.ZERO) < 0) {
+            throw new ValidationException("lowStockThreshold", "Low stock threshold must be non-negative");
+        }
+        if (request.getLowStockThreshold() != null && request.getLowStockThreshold().compareTo(LOW_STOCK_THRESHOLD_LIMIT) > 0) {
+            throw new ValidationException("lowStockThreshold", "Low stock threshold must not exceed " + LOW_STOCK_THRESHOLD_LIMIT.stripTrailingZeros().toPlainString());
         }
     }
 
@@ -322,8 +369,14 @@ public class InventoryApplicationService {
         if (request.getQuantity() == null || request.getQuantity().compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException("quantity", "Quantity must be greater than 0");
         }
+        if (request.getQuantity().compareTo(PRODUCT_STOCK_LIMIT) > 0) {
+            throw new ValidationException("quantity", "Quantity must not exceed " + PRODUCT_STOCK_LIMIT.stripTrailingZeros().toPlainString());
+        }
         if (request.getTotalCost() == null || request.getTotalCost().compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException("totalCost", "Total cost must be greater than 0");
+        }
+        if (request.getTotalCost().compareTo(MAX_PRODUCT_COST) > 0) {
+            throw new ValidationException("totalCost", "Total cost must not exceed " + MAX_PRODUCT_COST.stripTrailingZeros().toPlainString());
         }
     }
 

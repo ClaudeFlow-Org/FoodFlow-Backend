@@ -10,6 +10,9 @@ import com.foodflow.common.domain.NotFoundException;
 import com.foodflow.common.domain.ValidationException;
 import com.foodflow.inventory.domain.Product;
 import com.foodflow.inventory.domain.ProductRepository;
+import com.foodflow.sales.domain.Order;
+import com.foodflow.sales.domain.OrderLineItem;
+import com.foodflow.sales.domain.OrderRepository;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -27,19 +30,27 @@ public class CatalogApplicationService {
     private final DishRepository dishRepository;
     private final DishRecipeItemRepository dishRecipeItemRepository;
     private final ProductRepository productRepository;
+    private final OrderRepository orderRepository;
+    private final com.foodflow.billing.application.PlanLimitService planLimitService;
 
     public CatalogApplicationService(DishRepository dishRepository,
-                                     DishRecipeItemRepository dishRecipeItemRepository,
-                                     ProductRepository productRepository) {
+                                      DishRecipeItemRepository dishRecipeItemRepository,
+                                      ProductRepository productRepository,
+                                      OrderRepository orderRepository,
+                                      com.foodflow.billing.application.PlanLimitService planLimitService) {
         this.dishRepository = dishRepository;
         this.dishRecipeItemRepository = dishRecipeItemRepository;
         this.productRepository = productRepository;
+        this.orderRepository = orderRepository;
+        this.planLimitService = planLimitService;
     }
 
     public DishResponse addDish(Long userId, DishRequest request) {
         if (dishRepository.existsByUserIdAndName(userId, request.getName())) {
             throw new DuplicateResourceException("Dish", "name " + request.getName());
         }
+
+        planLimitService.assertCanAddDish(userId, dishRepository.findByUserId(userId).size());
 
         validatePrice(request.getPrice());
 
@@ -202,8 +213,11 @@ public class CatalogApplicationService {
     }
 
     private DishResponse toResponse(Dish dish, List<DishRecipeItem> recipeItems, Map<Long, Product> productsById) {
+        Map<Long, BigDecimal> reservedStockByProduct = recipeItems.isEmpty()
+                ? Map.of()
+                : calculateReservedStockByProduct(dish.getUserId(), productsById);
         List<DishRecipeItemResponse> recipeResponses = recipeItems.stream()
-                .map(item -> toRecipeItemResponse(item, productsById.get(item.getProductId())))
+                .map(item -> toRecipeItemResponse(item, productsById.get(item.getProductId()), reservedStockByProduct))
                 .toList();
 
         return DishResponse.builder()
@@ -218,16 +232,19 @@ public class CatalogApplicationService {
                 .build();
     }
 
-    private DishRecipeItemResponse toRecipeItemResponse(DishRecipeItem item, Product product) {
+    private DishRecipeItemResponse toRecipeItemResponse(DishRecipeItem item, Product product,
+                                                        Map<Long, BigDecimal> reservedStockByProduct) {
         BigDecimal requiredQuantity = item.getRequiredQuantity();
         BigDecimal stockLevel = product != null && product.getStockLevel() != null ? product.getStockLevel() : BigDecimal.ZERO;
+        BigDecimal reservedStock = reservedStockByProduct.getOrDefault(item.getProductId(), BigDecimal.ZERO);
+        BigDecimal availableStock = stockLevel.subtract(reservedStock).max(BigDecimal.ZERO);
         String stockUnit = product != null ? product.getUnitOfMeasure() : "";
         String requiredUnit = resolveRecipeUnit(item.getRequiredUnitOfMeasure(), product, requiredQuantity);
         BigDecimal requiredQuantityInStockUnit = convertRecipeQuantityToStockUnit(requiredQuantity, requiredUnit, stockUnit);
-        int availableOrders = stockLevel.compareTo(BigDecimal.ZERO) <= 0 || requiredQuantityInStockUnit.compareTo(BigDecimal.ZERO) <= 0
+        int availableOrders = availableStock.compareTo(BigDecimal.ZERO) <= 0 || requiredQuantityInStockUnit.compareTo(BigDecimal.ZERO) <= 0
                 ? 0
-                : stockLevel.divide(requiredQuantityInStockUnit, 0, RoundingMode.DOWN).intValue();
-        BigDecimal missingForOneOrder = requiredQuantityInStockUnit.subtract(stockLevel).max(BigDecimal.ZERO);
+                : availableStock.divide(requiredQuantityInStockUnit, 0, RoundingMode.DOWN).intValue();
+        BigDecimal missingForOneOrder = requiredQuantityInStockUnit.subtract(availableStock).max(BigDecimal.ZERO);
 
         return DishRecipeItemResponse.builder()
                 .productId(item.getProductId())
@@ -251,6 +268,58 @@ public class CatalogApplicationService {
                 .map(DishRecipeItemResponse::getAvailableOrders)
                 .min(Integer::compareTo)
                 .orElse(0);
+    }
+
+    private Map<Long, BigDecimal> calculateReservedStockByProduct(Long userId, Map<Long, Product> productsById) {
+        List<OrderLineItem> pendingLineItems = orderRepository.findByUserId(userId).stream()
+                .filter(this::isPendingOrder)
+                .flatMap(order -> order.getLineItems().stream())
+                .toList();
+        if (pendingLineItems.isEmpty()) {
+            return Map.of();
+        }
+
+        return calculateRequiredStockByProduct(userId, pendingLineItems, productsById);
+    }
+
+    private Map<Long, BigDecimal> calculateRequiredStockByProduct(Long userId, List<OrderLineItem> lineItems,
+                                                                  Map<Long, Product> productsById) {
+        Map<Long, Integer> orderedQuantitiesByDish = lineItems.stream()
+                .collect(Collectors.toMap(
+                        OrderLineItem::getDishId,
+                        OrderLineItem::getQuantity,
+                        Integer::sum
+                ));
+
+        List<DishRecipeItem> reservedRecipeItems = dishRecipeItemRepository.findByUserIdAndDishIdIn(
+                userId,
+                orderedQuantitiesByDish.keySet().stream().toList()
+        );
+        if (reservedRecipeItems.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<Long, BigDecimal> reservedByProduct = new java.util.HashMap<>();
+        for (DishRecipeItem recipeItem : reservedRecipeItems) {
+            Integer orderedQuantity = orderedQuantitiesByDish.get(recipeItem.getDishId());
+            Product product = productsById.get(recipeItem.getProductId());
+            if (orderedQuantity == null || orderedQuantity <= 0 || product == null) {
+                continue;
+            }
+
+            BigDecimal requiredQuantity = convertRecipeQuantityToStockUnit(
+                    recipeItem.getRequiredQuantity(),
+                    resolveRecipeUnit(recipeItem.getRequiredUnitOfMeasure(), product, recipeItem.getRequiredQuantity()),
+                    product.getUnitOfMeasure()
+            ).multiply(BigDecimal.valueOf(orderedQuantity));
+            reservedByProduct.merge(recipeItem.getProductId(), requiredQuantity, BigDecimal::add);
+        }
+
+        return reservedByProduct;
+    }
+
+    private boolean isPendingOrder(Order order) {
+        return order.getStatus() == null || order.getStatus() == Order.OrderStatus.PENDIENTE;
     }
 
     private String resolveRecipeUnit(String requestedUnit, Product product, BigDecimal requiredQuantity) {

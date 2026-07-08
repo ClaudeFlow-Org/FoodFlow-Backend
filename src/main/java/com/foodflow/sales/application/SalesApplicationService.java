@@ -29,30 +29,22 @@ import java.util.stream.Collectors;
 @Transactional
 public class SalesApplicationService {
 
+    private static final int MAX_TABLE_IDENTIFIER_LENGTH = 50;
+    private static final int MAX_ORDER_LINE_ITEMS = 30;
+    private static final int MAX_ORDER_ITEM_QUANTITY = 100;
+    private static final BigDecimal MAX_ORDER_TOTAL = new BigDecimal("9999999999.99");
+
     private final OrderRepository orderRepository;
     private final DishRepository dishRepository;
     private final DishRecipeItemRepository dishRecipeItemRepository;
     private final ProductRepository productRepository;
     private final OrderSequenceRepository orderSequenceRepository;
+    private final com.foodflow.billing.application.PlanLimitService planLimitService;
 
     public OrderResponse createOrder(Long userId, OrderRequest request) {
-        if (request.getLineItems() == null || request.getLineItems().isEmpty()) {
-            throw new ValidationException("lineItems", "At least one line item is required");
-        }
+        validateOrderRequest(request);
 
-        // Get or create order sequence for this user
-        OrderSequence sequence = orderSequenceRepository.findByUserId(userId)
-                .orElseGet(() -> OrderSequence.builder()
-                        .userId(userId)
-                        .nextValue(1L)
-                        .build());
-
-        // Get next sequence number and update
-        Long sequenceNumber = sequence.getNextAndIncrement();
-        orderSequenceRepository.save(sequence);
-
-        // Generate unique order number: {userId}-{sequenceNumber}
-        String orderNumber = Order.generateOrderNumber(userId, sequenceNumber);
+        planLimitService.assertCanCreateOrder(userId, countOrdersThisMonth(userId));
 
         List<OrderLineItem> lineItems = request.getLineItems().stream()
                 .map(itemRequest -> {
@@ -64,6 +56,9 @@ public class SalesApplicationService {
                     }
                     if (itemRequest.getQuantity() == null || itemRequest.getQuantity() <= 0) {
                         throw new ValidationException("lineItems.quantity", "Quantity must be at least 1");
+                    }
+                    if (itemRequest.getQuantity() > MAX_ORDER_ITEM_QUANTITY) {
+                        throw new ValidationException("lineItems.quantity", "Quantity must not exceed " + MAX_ORDER_ITEM_QUANTITY);
                     }
 
                     return OrderLineItem.builder()
@@ -77,10 +72,23 @@ public class SalesApplicationService {
 
         validateInventoryAvailabilityForOrder(userId, lineItems);
 
+        // Get or create order sequence for this user after stock validation succeeds
+        OrderSequence sequence = orderSequenceRepository.findByUserId(userId)
+                .orElseGet(() -> OrderSequence.builder()
+                        .userId(userId)
+                        .nextValue(1L)
+                        .build());
+
+        Long sequenceNumber = sequence.getNextAndIncrement();
+        orderSequenceRepository.save(sequence);
+
+        // Generate unique order number: {userId}-{sequenceNumber}
+        String orderNumber = Order.generateOrderNumber(userId, sequenceNumber);
+
         Order order = Order.builder()
                 .id(Order.OrderId.empty())
                 .userId(userId)
-                .tableIdentifier(request.getTableIdentifier())
+                .tableIdentifier(request.getTableIdentifier().trim())
                 .orderDate(LocalDateTime.now())
                 .lineItems(lineItems)
                 .totalAmount(BigDecimal.ZERO)
@@ -89,6 +97,7 @@ public class SalesApplicationService {
                 .build();
 
         order.calculateTotal();
+        validateOrderTotal(order.getTotalAmount());
 
         Order savedOrder = orderRepository.save(order);
 
@@ -100,6 +109,43 @@ public class SalesApplicationService {
                 .sorted((o1, o2) -> o2.getOrderDate().compareTo(o1.getOrderDate()))
                 .map(this::toResponse)
                 .collect(Collectors.toList());
+    }
+
+    private long countOrdersThisMonth(Long userId) {
+        LocalDateTime startOfMonth = LocalDateTime.now()
+                .withDayOfMonth(1)
+                .toLocalDate()
+                .atStartOfDay();
+        return orderRepository.findByUserId(userId).stream()
+                .filter(order -> order.getOrderDate() != null && !order.getOrderDate().isBefore(startOfMonth))
+                .count();
+    }
+
+    private void validateOrderRequest(OrderRequest request) {
+        if (request == null) {
+            throw new ValidationException("order", "Order information is required");
+        }
+        if (request.getTableIdentifier() == null || request.getTableIdentifier().isBlank()) {
+            throw new ValidationException("tableIdentifier", "Table identifier is required");
+        }
+        if (request.getTableIdentifier().trim().length() > MAX_TABLE_IDENTIFIER_LENGTH) {
+            throw new ValidationException("tableIdentifier", "Table identifier must not exceed " + MAX_TABLE_IDENTIFIER_LENGTH + " characters");
+        }
+        if (request.getLineItems() == null || request.getLineItems().isEmpty()) {
+            throw new ValidationException("lineItems", "At least one line item is required");
+        }
+        if (request.getLineItems().size() > MAX_ORDER_LINE_ITEMS) {
+            throw new ValidationException("lineItems", "Order must not exceed " + MAX_ORDER_LINE_ITEMS + " line items");
+        }
+    }
+
+    private void validateOrderTotal(BigDecimal totalAmount) {
+        if (totalAmount == null || totalAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException("totalAmount", "Order total must be greater than 0");
+        }
+        if (totalAmount.compareTo(MAX_ORDER_TOTAL) > 0) {
+            throw new ValidationException("totalAmount", "Order total must not exceed " + MAX_ORDER_TOTAL.stripTrailingZeros().toPlainString());
+        }
     }
 
     public OrderResponse getOrderById(Long userId, Long orderId) {
@@ -229,7 +275,8 @@ public class SalesApplicationService {
         Map<Long, Product> productsById = productRepository.findByUserId(userId).stream()
                 .collect(Collectors.toMap(product -> product.getId().value(), product -> product));
         Map<Long, BigDecimal> requiredByProduct = calculateRequiredStockByProduct(userId, lineItems, productsById);
-        validateRequiredStock(requiredByProduct, productsById);
+        Map<Long, BigDecimal> reservedByProduct = calculateReservedStockByProduct(userId, productsById);
+        validateRequiredAvailableStock(requiredByProduct, productsById, reservedByProduct);
     }
 
     private Map<Long, BigDecimal> calculateRequiredStockByProduct(Long userId, List<OrderLineItem> lineItems,
@@ -291,6 +338,47 @@ public class SalesApplicationService {
                 );
             }
         }
+    }
+
+    private void validateRequiredAvailableStock(Map<Long, BigDecimal> requiredByProduct,
+                                                Map<Long, Product> productsById,
+                                                Map<Long, BigDecimal> reservedByProduct) {
+        for (Map.Entry<Long, BigDecimal> entry : requiredByProduct.entrySet()) {
+            Product product = productsById.get(entry.getKey());
+            if (product == null) {
+                throw new ValidationException("stockLevel", "A recipe product no longer exists in inventory");
+            }
+
+            BigDecimal stockLevel = product.getStockLevel() != null ? product.getStockLevel() : BigDecimal.ZERO;
+            BigDecimal reservedStock = reservedByProduct.getOrDefault(entry.getKey(), BigDecimal.ZERO);
+            BigDecimal availableStock = stockLevel.subtract(reservedStock).max(BigDecimal.ZERO);
+            BigDecimal requiredStock = entry.getValue();
+            if (availableStock.compareTo(requiredStock) < 0) {
+                throw new ValidationException(
+                        "stockLevel",
+                        "Insufficient available stock for " + product.getName() + ". Required " +
+                                requiredStock.stripTrailingZeros().toPlainString() + " " + product.getUnitOfMeasure() +
+                        ", available " + availableStock.stripTrailingZeros().toPlainString() + " " + product.getUnitOfMeasure() +
+                        " after pending orders"
+                );
+            }
+        }
+    }
+
+    private Map<Long, BigDecimal> calculateReservedStockByProduct(Long userId, Map<Long, Product> productsById) {
+        List<OrderLineItem> pendingLineItems = orderRepository.findByUserId(userId).stream()
+                .filter(this::isPendingOrder)
+                .flatMap(order -> order.getLineItems().stream())
+                .toList();
+        if (pendingLineItems.isEmpty()) {
+            return Map.of();
+        }
+
+        return calculateRequiredStockByProduct(userId, pendingLineItems, productsById);
+    }
+
+    private boolean isPendingOrder(Order order) {
+        return order.getStatus() == null || order.getStatus() == Order.OrderStatus.PENDIENTE;
     }
 
     private BigDecimal convertRecipeQuantityToStockUnit(DishRecipeItem recipeItem, Product product) {

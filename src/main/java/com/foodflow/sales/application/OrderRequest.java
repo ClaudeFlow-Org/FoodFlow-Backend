@@ -13,6 +13,7 @@ public class OrderRequest {
     private String tableIdentifier;
 
     @NotEmpty(message = "At least one line item is required")
+    @Size(max = 30, message = "Order must not exceed 30 line items")
     private List<OrderLineItemRequest> lineItems;
 
     public OrderRequest() {
