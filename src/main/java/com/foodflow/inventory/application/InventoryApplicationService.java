@@ -71,7 +71,7 @@ public class InventoryApplicationService {
                 .updatedAt(LocalDateTime.now())
                 .build();
 
-        Product savedProduct = productRepository.save(product);
+        Product savedProduct = saveProductWithLegacyCategoryFallback(product, null);
         runOptionalSync("syncing product category assignment", () ->
                 syncProductCategoryAssignment(userId, savedProduct.getId().value(), displayCategory)
         );
@@ -117,6 +117,7 @@ public class InventoryApplicationService {
         validateProductRequest(request);
 
         BigDecimal previousStockLevel = product.getStockLevel();
+        String previousStorageCategory = product.getCategory();
         String previousDisplayCategory = displayCategoryForProduct(userId, product);
         boolean categoryProvided = request.getCategory() != null;
         String displayCategory = categoryProvided ? normalizeCategory(request.getCategory()) : previousDisplayCategory;
@@ -137,7 +138,7 @@ public class InventoryApplicationService {
             product.setCategory(storageCategory);
         }
 
-        Product updatedProduct = productRepository.save(product);
+        Product updatedProduct = saveProductWithLegacyCategoryFallback(product, previousStorageCategory);
         if (categoryProvided) {
             runOptionalSync("syncing product category assignment", () ->
                     syncProductCategoryAssignment(userId, productId, displayCategory)
@@ -159,9 +160,10 @@ public class InventoryApplicationService {
         String displayCategory = request != null ? normalizeCategory(request.getName()) : null;
         runOptionalSync("ensuring product category", () -> ensureCategoryExists(userId, displayCategory));
 
+        String previousStorageCategory = product.getCategory();
         product.setCategory(toProductStorageCategory(displayCategory));
         product.setUpdatedAt(LocalDateTime.now());
-        Product updatedProduct = productRepository.save(product);
+        Product updatedProduct = saveProductWithLegacyCategoryFallback(product, previousStorageCategory);
 
         runOptionalSync("syncing product category assignment", () ->
                 syncProductCategoryAssignment(userId, productId, displayCategory)
@@ -482,6 +484,24 @@ public class InventoryApplicationService {
         }
     }
 
+    /**
+     * Persists the product tolerating legacy schemas where the products.category
+     * column still carries the old enum CHECK constraint (MEAT, VEGETABLES, ...).
+     * If the save is rejected, it retries with the fallback storage category so the
+     * product itself is never lost; the display category keeps working through the
+     * category-assignment rows in inventory_categories.
+     */
+    private Product saveProductWithLegacyCategoryFallback(Product product, String fallbackStorageCategory) {
+        try {
+            return productRepository.save(product);
+        } catch (RuntimeException ex) {
+            log.warn("Product save rejected with category '{}', retrying with legacy-safe category '{}': {}",
+                    product.getCategory(), fallbackStorageCategory, ex.getMessage());
+            product.setCategory(fallbackStorageCategory);
+            return productRepository.save(product);
+        }
+    }
+
     private String displayCategoryOrStorage(Product product, String assignedCategory) {
         String normalizedAssigned = normalizeCategory(assignedCategory);
         if (normalizedAssigned != null) {
@@ -651,9 +671,10 @@ public class InventoryApplicationService {
         productRepository.findByUserId(userId).stream()
                 .filter(product -> previousName.equalsIgnoreCase(categoryOrDefault(product.getCategory())))
                 .forEach(product -> {
+                    String previousStorageCategory = product.getCategory();
                     product.setCategory(toProductStorageCategory(newName));
                     product.setUpdatedAt(LocalDateTime.now());
-                    productRepository.save(product);
+                    saveProductWithLegacyCategoryFallback(product, previousStorageCategory);
                 });
     }
 
